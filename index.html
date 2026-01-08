@@ -1,16 +1,29 @@
 <!DOCTYPE html>
 <html>
+
 <head>
   <meta charset="utf-8">
-  <title>Serial Monitor</title>
+  <title>Nordic Serial Monitor</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
- 
+  <style>
+
+  </style>
 </head>
 
 <body class="light-mode">
+  <!-- Updated Navbar with Back Button on Left -->
   <nav>
     <ul class="nav-links">
+      <!-- Back Button - Hidden on Home Screen -->
+      <li id="back-nav-button" style="display: none;">
+        <button class="back-button-nav" onclick="showHome()">
+          <i class="fas fa-arrow-left"></i> Home
+        </button>
+      </li>
+      <!-- Spacer to push theme toggle to right -->
+      <li style="flex: 1;"></li>
+      <!-- Theme Toggle -->
       <li>
         <button class="theme-toggle" onclick="toggleTheme()"><i class="fas fa-moon"></i></button>
       </li>
@@ -18,564 +31,784 @@
   </nav>
 
   <div class="main-container">
-    <!-- ========= LEFT PANEL ========= -->
-    <div class="left-panel">
-      <section class="control-section">
-        <h3><i class="fas fa-plug"></i> Serial Port</h3>
-        <div class="controls">
-          <button class="action-button" onclick="listPorts()"><i class="fas fa-list"></i> List Ports</button>
-          <select id="ports" class="input-field"></select>
-          <select id="baud-rate" class="input-field">
-            <option value="9600">9600</option>
-            <option value="19200">19200</option>
-            <option value="38400">38400</option>
-            <option value="57600">57600</option>
-            <option value="115200" selected>115200</option>
-            <option value="230400">230400</option>
-          </select>
-          <button class="action-button" onclick="connectPort()"><i class="fas fa-play"></i> Connect</button>
-          <button class="action-button" onclick="disconnectPort()"><i class="fas fa-stop"></i> Disconnect</button>
-        </div>
-      </section>
+    <!-- Home Screen (Redesigned) -->
+    <div id="home-screen" class="home-screen">
+      <div class="card gateway-card" onclick="showSection('gateway')">
+        <i class="fas fa-door-open"></i>
+        <h2>Gateway</h2>
+        <p>Configure and monitor your Nordic gateway device, manage connections, and view real-time logs</p>
+      </div>
+      <div class="card weather-card" onclick="showSection('weather')">
+        <i class="fas fa-cloud-sun"></i>
+        <h2>Weather Station</h2>
+        <p>Monitor environmental sensors, view live data visualizations, and configure protocols</p>
+      </div>
+    </div>
 
-  <section class="control-section">
-        <h3><i class="fas fa-clock"></i> Interval Configuration</h3>
-        <div class="controls">
-          <!-- Replace your current interval wrapper with this -->
-          <div class="interval-wrapper">
-            <div class="input-scroll-container">
-              <input type="number" id="interval" class="input-field" placeholder="Interval" min="1" oninput="updateIntervalDisplay()">
-            </div>
-            <span class="interval-suffix">(seconds)</span>
-          </div>
-          <button class="action-button" onclick="setInterval()"><i class="fas fa-save"></i> Set Interval</button>
-          <button class="action-button" onclick="getInterval()"><i class="fas fa-eye"></i> Get Interval</button>
-        </div>
-      </section>
+    <!-- Weather Station Section -->
+    <div id="weather-section" class="content-section" style="display: none;">
 
-      <section class="control-section">
-        <div class="controls">
-          <button id="restart-button" class="action-button" onclick="restartDevice()">
-            <i class="fas fa-redo"></i> Restart Device
-          </button>
-        </div>
-      </section>
 
-      <!-- ===== PROTOCOL COLLAPSIBLE ===== -->
-      <section class="control-section" id="protocol-section">
-        <button class="collapsible">
-          <span><i class="fas fa-exchange-alt"></i> Protocol Configuration</span>
-          <i class="fas fa-chevron-down"></i>
-        </button>
-        <div class="collapsible-content">
-          <div class="controls">
-            <select id="protocol-select" class="input-field" onchange="updateProtocolUI()">
-              <option value="FTP">FTP</option>
-              <option value="MQTT">MQTT</option>
-              <option value="HTTP">HTTP</option>
-            </select>
-            <button class="action-button" onclick="setProtocol()"><i class="fas fa-save"></i> Set Protocol</button>
-          </div>
-
-          <!-- FTP -->
-          <div id="ftp-section">
-            <h3><i class="fas fa-cloud-upload-alt"></i> FTP Configuration</h3>
+      <div class="panels-container"
+        style="display: flex; width: 100%; height: calc(100vh - 4.5rem - 40px - 60px); gap: 20px; padding: 20px;">
+        <!-- LEFT PANEL -->
+        <div class="left-panel">
+          <section class="control-section">
+            <h3><i class="fas fa-plug"></i> Serial Port</h3>
             <div class="controls">
-              <input type="text" id="ftp-host" class="input-field" placeholder="Host (e.g., 13.126.194.224)">
-            </div>
-            <div class="controls">
-              <input type="text" id="ftp-user" class="input-field" placeholder="User (e.g., iit_ropar)">
-            </div>
-            <div class="controls">
-              <input type="password" id="ftp-password" class="input-field" placeholder="Password">
-            </div>
-            <div class="controls">
-              <button class="action-button" onclick="setFTPConfig()"><i class="fas fa-save"></i> Set Config</button>
-              <button class="action-button" onclick="getFTPConfig()"><i class="fas fa-eye"></i> Get FTP Config</button>
-            </div>
-          </div>
-
-          <!-- MQTT -->
-          <div id="mqtt-section" style="display: none;">
-            <h3><i class="fas fa-comments"></i> MQTT Configuration</h3>
-            <div class="controls">
-              <input type="text" id="mqtt-broker" class="input-field" placeholder="Broker (e.g., a3qvnhplljfvjr-ats.iot.us-east-1.amazonaws.com)">
-            </div>
-            <div class="controls">
-              <input type="number" id="mqtt-port" class="input-field" placeholder="Port (e.g., 1883)" value="1883">
-            </div>
-            <div class="controls">
-              <input type="text" id="mqtt-user" class="input-field" placeholder="User">
-            </div>
-            <div class="controls">
-              <input type="password" id="mqtt-password" class="input-field" placeholder="Password">
-            </div>
-            <div class="controls">
-              <input type="text" id="mqtt-topic" class="input-field" placeholder="Topic (e.g., device/data)">
-              <button class="action-button" onclick="setMQTTTopic()"><i class="fas fa-save"></i> Set Topic</button>
-            </div>
-            <div class="controls">
-              <label for="mqtt-ssl">SSL/TLS Enabled:</label>
-              <select id="mqtt-ssl" class="input-field" onchange="toggleCertUploadAndPort()">
-                <option value="no">No</option>
-                <option value="yes">Yes</option>
+              <button class="action-button" onclick="listPorts()"><i class="fas fa-list"></i> List Ports</button>
+              <select id="ports" class="input-field"></select>
+              <select id="baud-rate" class="input-field">
+                <option value="9600">9600</option>
+                <option value="19200">19200</option>
+                <option value="38400">38400</option>
+                <option value="57600">57600</option>
+                <option value="115200" selected>115200</option>
+                <option value="230400">230400</option>
               </select>
+              <button class="action-button" onclick="connectPort()"><i class="fas fa-play"></i> Connect</button>
+              <button class="action-button" onclick="disconnectPort()"><i class="fas fa-stop"></i> Disconnect</button>
             </div>
-            <div id="cert-section" style="display: none;">
-              <div class="controls">
-                <label>Device Certificate:</label>
-                <input type="text" id="mqtt-ca-cert-path" class="input-field" placeholder="Path to certificate">
-                <button class="action-button" onclick="browseCACert()"><i class="fas fa-folder-open"></i> Browse</button>
-              </div>
-              <div class="controls">
-                <label>Private Key:</label>
-                <input type="text" id="mqtt-client-key-path" class="input-field" placeholder="Path to private key">
-                <button class="action-button" onclick="browseClientKey()"><i class="fas fa-folder-open"></i> Browse</button>
-              </div>
-            </div>
+          </section>
+
+          <section class="control-section">
+            <h3><i class="fas fa-clock"></i> Interval Configuration</h3>
             <div class="controls">
-              <button class="action-button" onclick="setMQTTConfig()"><i class="fas fa-save"></i> Set Config</button>
-              <button class="action-button" onclick="getMQTTConfig()"><i class="fas fa-eye"></i> Get MQTT Config</button>
-              <button class="action-button" id="cert-upload-button" onclick="uploadCertificates()" style="display: none;"><i class="fas fa-upload"></i> Upload Certificates</button>
-            </div>
-          </div>
-
-          <!-- HTTP -->
-          <div id="http-section" style="display: none;">
-            <h3><i class="fas fa-globe"></i> HTTP Configuration</h3>
-            <div class="controls">
-              <input type="text" id="http-url" class="input-field" placeholder="URL (e.g., http://example.com/data )">
-            </div>
-            <div class="controls">
-              <input type="text" id="http-auth-user" class="input-field" placeholder="Auth User">
-              <input type="password" id="http-auth-password" class="input-field" placeholder="Auth Password">
-            </div>
-            <div class="controls">
-              <button class="action-button" onclick="setHTTPConfig()"><i class="fas fa-save"></i> Set Config</button>
-              <button class="action-button" onclick="getHTTPConfig()"><i class="fas fa-eye"></i> Get HTTP Config</button>
-            </div>
-          </div>
-        </div>
-      </section>
-    </div>
-
-    <!-- ========= RIGHT PANEL ========= -->
-    <div class="right-panel">
-      <div class="container">
-        <section class="control-section" id="sensors-section">
-          <h3><i class="fas fa-microchip"></i> Sensor Protocols</h3>
-          <div class="controls">
-            <select id="sensor-select" class="input-field" onchange="updateSensorUI()">
-              <option value="" disabled selected>Select a Sensor Protocol</option>
-              <option value="I2C">I2C</option>
-              <option value="ADC">ADC</option>
-              <option value="RS232">RS232</option>
-              <option value="RS485">RS485</option>
-              <option value="SPI">SPI</option>
-            </select>
-          </div>
-
-          <!-- sensor list -->
-          <div id="sensor-list" class="sensor-list-container"></div>
-        
-          <div id="sensor-data" class="sensor-data-container"></div>
-
-          <!-- SENSOR CARDS -->
-          <div class="sensor-cards" style="margin-bottom: 20px;">
-            <!-- Temperature -->
-            <div id="thermometer-container" class="thermometer-container" style="display: none;">
-              <h4>Temperature</h4>
-              <div id="thermometer-value" class="sensor-value" style="margin-bottom: 8px;"></div>
-              <svg width="100" height="220" viewBox="0 0 100 220" class="thermometer">
-                <defs>
-                  <radialGradient id="liquidGlow" cx="50%" cy="50%" r="60%">
-                    <stop offset="0%" stop-color="#FFFFC8" />
-                    <stop offset="60%" stop-color="#FFF078" />
-                    <stop offset="100%" stop-color="#FFD23C" />
-                  </radialGradient>
-                </defs>
-                <rect x="40" y="20" width="20" height="160" rx="10" ry="10"
-                      fill="#e0e7ff" stroke="#333" stroke-width="2"/>
-                <rect id="thermometer-fill" x="42" y="180" width="16" height="0"
-                      rx="8" ry="8" fill="url(#liquidGlow)"/>
-                <circle cx="50" cy="180" r="10"
-                        fill="#e0e7ff" stroke="#333" stroke-width="2"/>
-                <circle id="thermometer-bulb" cx="50" cy="180" r="8"
-                        fill="url(#liquidGlow)"/>
-                <line x1="65" y1="20"  x2="70"  y2="20"  stroke="#333" stroke-width="2"/>
-                <text x="75" y="25"  font-size="12" fill="var(--text-color)">50°C</text>
-                <line x1="65" y1="52"  x2="70"  y2="52"  stroke="#333" stroke-width="1"/>
-                <text x="75" y="57"  font-size="12" fill="var(--text-color)">40°C</text>
-                <line x1="65" y1="84"  x2="70"  y2="84"  stroke="#333" stroke-width="1"/>
-                <text x="75" y="89"  font-size="12" fill="var(--text-color)">30°C</text>
-                <line x1="65" y1="116" x2="70"  y2="116" stroke="#333" stroke-width="1"/>
-                <text x="75" y="121" font-size="12" fill="var(--text-color)">20°C</text>
-                <line x1="65" y1="148" x2="70"  y2="148" stroke="#333" stroke-width="1"/>
-                <text x="75" y="153" font-size="12" fill="var(--text-color)">10°C</text>
-                <line x1="65" y1="180" x2="70"  y2="180" stroke="#333" stroke-width="2"/>
-                <text x="75" y="185" font-size="12" fill="var(--text-color)">0°C</text>
-              </svg>
-            </div>
-
-            <!-- Humidity -->
-            <div id="humidity-card" class="wave-card-container" style="display: none;">
-              <h4>Humidity</h4>
-              <div class="wave-card-content">
-                <i class="fas fa-water-drop-outlined"></i>
-                <span id="humidity-value" class="sensor-value"></span>
-              </div>
-              <svg id="humidity-wave" width="100%" height="80" viewBox="0 0 100 100" preserveAspectRatio="none">
-                <defs>
-                  <linearGradient id="waveGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                    <stop offset="0%" id="waveColor1" style="stop-color:#3d8eb4;stop-opacity:0.5"/>
-                    <stop offset="100%" id="waveColor2" style="stop-color:#0474a8;stop-opacity:1"/>
-                  </linearGradient>
-                </defs>
-                <path id="wavePath" d="M 0 100 V 100 H 0 Z" fill="url(#waveGradient)"/>
-              </svg>
-            </div>
-
-          <!-- PRESSURE -->
-<div id="pressure-card" class="card-container">
-  <h4>Pressure</h4>
-  <div class="card-content">
-    <div id="pressure-value" class="main-value">1038</div>
-  </div>
-
-  <!-- full-circle gauge -->
-  <div class="gauge-container">
-    <svg class="gauge-svg" viewBox="0 0 200 200">
-      <defs>
-        <!-- gradient that follows .light-mode / .dark-mode -->
-        <linearGradient id="gaugeGradientLight" x1="0" y1="0" x2="200" y2="200">
-          <stop offset="0%"  stop-color="#06b6d4"/>
-          <stop offset="25%" stop-color="#10b981"/>
-          <stop offset="50%" stop-color="#f59e0b"/>
-          <stop offset="100%" stop-color="#ef4444"/>
-        </linearGradient>
-        <linearGradient id="gaugeGradientDark" x1="0" y1="0" x2="200" y2="200">
-          <stop offset="0%"  stop-color="#34d399"/>
-          <stop offset="50%" stop-color="#fbbf24"/>
-          <stop offset="100%" stop-color="#f87171"/>
-        </linearGradient>
-      </defs>
-
-      <!-- full-circle background -->
-      <circle class="gauge-outer"
-              cx="100" cy="100" r="90"
-              stroke-width="10"/>
-
-      <!-- animated value arc -->
-      <circle id="gauge-fill"
-              class="gauge-fill"
-              cx="100" cy="100" r="90"
-              stroke-width="10"
-              stroke-linecap="round"
-              stroke-dasharray="0 565.48"
-              stroke-dashoffset="0"/>
-    </svg>
-
-    <!-- centre read-out -->
-    <div class="gauge-inner">
-      <span id="pressure-value-inner" class="pressure-value">1038</span>
-    </div>
-  </div>
-</div>
-
-            <!-- Light Intensity -->
-            <div id="light-card" class="card-container" style="display: none; position: relative; border-radius: 15px; box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1); padding: 15px; display: flex; flex-direction: column; justify-content: center; align-items: center;">
-              <h4>Light Intensity</h4>
-              <div id="light-value" class="sensor-value"></div>
-              <svg id="light-sun" width="120" height="120" viewBox="0 0 120 120" style="display: none; margin: 10px auto;">
-                <defs>
-                  <radialGradient id="sunGradient" cx="50%" cy="50%" r="50%">
-                    <stop offset="0%" style="stop-color:#ffeb3b; stop-opacity:1"/>
-                    <stop offset="60%" style="stop-color:#ff9800; stop-opacity:0.8"/>
-                    <stop offset="100%" style="stop-color:#ff6b00; stop-opacity:0.4"/>
-                  </radialGradient>
-                  <filter id="sunGlow" x="-50%" y="-50%" width="200%" height="200%">
-                    <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
-                    <feMerge>
-                      <feMergeNode in="coloredBlur"/>
-                      <feMergeNode in="SourceGraphic"/>
-                    </feMerge>
-                  </filter>
-                </defs>
-                <g id="sun-rays" transform="translate(60, 60)">
-                  <line class="sun-ray" x1="0" y1="0" x2="0" y2="-40" stroke="#4b2e00" stroke-width="4" opacity="0">
-                    <animate attributeName="opacity" values="0;0.9;0" dur="4s" repeatCount="indefinite"/>
-                    <animate attributeName="y2" values="-35;-50;-35" dur="4s" repeatCount="indefinite"/>
-                  </line>
-                  <line class="sun-ray" x1="0" y1="0" x2="28" y2="-28" stroke="#4b2e00" stroke-width="4" opacity="0">
-                    <animate attributeName="opacity" values="0;0.9;0" dur="4s" begin="0.5s" repeatCount="indefinite"/>
-                    <animate attributeName="x2" values="24;34;24" dur="4s" begin="0.5s" repeatCount="indefinite"/>
-                    <animate attributeName="y2" values="-24;-34;-24" dur="4s" begin="0.5s" repeatCount="indefinite"/>
-                  </line>
-                  <line class="sun-ray" x1="0" y1="0" x2="40" y2="0" stroke="#4b2e00" stroke-width="4" opacity="0">
-                    <animate attributeName="opacity" values="0;0.9;0" dur="4s" begin="1s" repeatCount="indefinite"/>
-                    <animate attributeName="x2" values="35;50;35" dur="4s" begin="1s" repeatCount="indefinite"/>
-                  </line>
-                  <line class="sun-ray" x1="0" y1="0" x2="28" y2="28" stroke="#4b2e00" stroke-width="4" opacity="0">
-                    <animate attributeName="opacity" values="0;0.9;0" dur="4s" begin="1.5s" repeatCount="indefinite"/>
-                    <animate attributeName="x2" values="24;34;24" dur="4s" begin="1.5s" repeatCount="indefinite"/>
-                    <animate attributeName="y2" values="24;34;24" dur="4s" begin="1.5s" repeatCount="indefinite"/>
-                  </line>
-                  <line class="sun-ray" x1="0" y1="0" x2="0" y2="40" stroke="#4b2e00" stroke-width="4" opacity="0">
-                    <animate attributeName="opacity" values="0;0.9;0" dur="4s" begin="2s" repeatCount="indefinite"/>
-                    <animate attributeName="y2" values="35;50;35" dur="4s" begin="2s" repeatCount="indefinite"/>
-                  </line>
-                  <line class="sun-ray" x1="0" y1="0" x2="-28" y2="28" stroke="#4b2e00" stroke-width="4" opacity="0">
-                    <animate attributeName="opacity" values="0;0.9;0" dur="4s" begin="2.5s" repeatCount="indefinite"/>
-                    <animate attributeName="x2" values="-24;-34;-24" dur="4s" begin="2.5s" repeatCount="indefinite"/>
-                    <animate attributeName="y2" values="24;34;24" dur="4s" begin="2.5s" repeatCount="indefinite"/>
-                  </line>
-                  <line class="sun-ray" x1="0" y1="0" x2="-40" y2="0" stroke="#4b2e00" stroke-width="4" opacity="0">
-                    <animate attributeName="opacity" values="0;0.9;0" dur="4s" begin="3s" repeatCount="indefinite"/>
-                    <animate attributeName="x2" values="-35;-50;-35" dur="4s" begin="3s" repeatCount="indefinite"/>
-                  </line>
-                  <line class="sun-ray" x1="0" y1="0" x2="-28" y2="-28" stroke="#4b2e00" stroke-width="4" opacity="0">
-                    <animate attributeName="opacity" values="0;0.9;0" dur="4s" begin="3.5s" repeatCount="indefinite"/>
-                    <animate attributeName="x2" values="-24;-34;-24" dur="4s" begin="3.5s" repeatCount="indefinite"/>
-                    <animate attributeName="y2" values="-24;-34;-24" dur="4s" begin="3.5s" repeatCount="indefinite"/>
-                  </line>
-                </g>
-                <circle id="sun-circle" cx="60" cy="60" r="24" fill="url(#sunGradient)" filter="url(#sunGlow)"/>
-                <circle cx="60" cy="60" r="24" fill="none" stroke="#fff" stroke-width="1" opacity="0.3">
-                  <animate attributeName="r" values="24;28;24" dur="4s" repeatCount="indefinite"/>
-                  <animate attributeName="opacity" values="0.3;0.1;0.3" dur="4s" repeatCount="indefinite"/>
-                </circle>
-              </svg>
-              <svg id="light-moon" width="120" height="120" viewBox="0 0 120 120" style="display: none; margin: 10px auto;">
-                <defs>
-                  <radialGradient id="moonGradient" cx="50%" cy="50%" r="50%">
-                    <stop offset="0%" style="stop-color:#677484; stop-opacity:0.9"/>
-                    <stop offset="70%" style="stop-color:#677484; stop-opacity:0.6"/>
-                    <stop offset="100%" style="stop-color:#4682b4; stop-opacity:0.3"/>
-                  </radialGradient>
-                  <filter id="moonGlow" x="-50%" y="-50%" width="200%" height="200%">
-                    <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
-                    <feMerge>
-                      <feMergeNode in="coloredBlur"/>
-                      <feMergeNode in="SourceGraphic"/>
-                    </feMerge>
-                  </filter>
-                </defs>
-                <path id="moon-shape" d="M60 20 A40 40 0 0 1 60 100 A40 40 0 0 1 60 20 C80 30 80 90 60 100" fill="url(#moonGradient)" filter="url(#moonGlow)"/>
-                <g id="moon-sparkles">
-                  <circle cx="40" cy="40" r="2" fill="#fff" opacity="0">
-                    <animate attributeName="opacity" values="0;0.7;0" dur="2s" repeatCount="indefinite"/>
-                    <animate attributeName="r" values="2;3;2" dur="2s" repeatCount="indefinite"/>
-                  </circle>
-                  <circle cx="80" cy="80" r="2" fill="#fff" opacity="0">
-                    <animate attributeName="opacity" values="0;0.7;0" dur="2.5s" begin="0.5s" repeatCount="indefinite"/>
-                    <animate attributeName="r" values="2;3;2" dur="2.5s" begin="0.5s" repeatCount="indefinite"/>
-                  </circle>
-                  <circle cx="50" cy="70" r="2" fill="#fff" opacity="0">
-                    <animate attributeName="opacity" values="0;0.7;0" dur="3s" begin="1s" repeatCount="indefinite"/>
-                    <animate attributeName="r" values="2;3;2" dur="3s" begin="1s" repeatCount="indefinite"/>
-                  </circle>
-                </g>
-              </svg>
-            </div>
-
-            <!-- Battery Voltage -->
-            <div id="battery-card" class="card-container" style="display: none; position: relative; padding: 15px; text-align: center;">
-              <h4>Battery Voltage</h4>
-              <div id="battery-value" class="sensor-value" style="margin-bottom: 10px;"></div>
-              <div style="display: inline-block;">
-                <svg id="battery-icon" width="80" height="100" viewBox="0 0 80 100">
-                  <rect x="20" y="20" width="40" height="70" rx="5" ry="5" fill="#e0e7ff" stroke="#333" stroke-width="2"/>
-                  <rect x="30" y="10" width="20" height="10" fill="#e0e7ff" stroke="#333" stroke-width="2"/>
-                  <rect id="battery-fill" x="22" y="20" width="36" height="0" rx="4" ry="4" fill="#34d399"/>
-                </svg>
-              </div>
-            </div>
-
-            <!-- Hourly Rain Gauge -->
-            <div id="rain-gauge-hourly-card" class="wave-card-container" style="display: none;">
-              <div id="rain-hourly-overlay" class="rain-overlay" aria-hidden="true"></div>
-              <div class="rain-info" style="z-index:2; position:relative;">
-                <h4>Hourly Rainfall</h4>
-                <div class="wave-card-content">
-                  <i class="fas fa-cloud-rain"></i>
-                  <span id="rain-gauge-hourly-value" class="sensor-value"></span>
+              <div class="interval-wrapper">
+                <div class="input-scroll-container">
+                  <input type="number" id="interval" class="input-field" placeholder="Interval" min="1"
+                    oninput="updateIntervalDisplay()">
                 </div>
-                <svg id="rain-hourly-wave" width="100%" height="120" viewBox="0 0 100 120" preserveAspectRatio="none">
-                  <defs>
-                    <style>
-                      @keyframes realRaindropFall {
-                        0% { transform: translateY(-20px); opacity: 0; }
-                        10% { opacity: 1; }
-                        90% { opacity: 1; }
-                        100% { transform: translateY(120px); opacity: 0; }
-                      }
-                    </style>
-                  </defs>
-                  <g id="rainDrops"></g>
-                </svg>
+                <span class="interval-suffix">(seconds)</span>
               </div>
+              <button class="action-button" onclick="setInterval()"><i class="fas fa-save"></i> Set Interval</button>
+              <button class="action-button" onclick="getInterval()"><i class="fas fa-eye"></i> Get Interval</button>
             </div>
+          </section>
 
-            <!-- Daily Rain Gauge -->
-            <div id="rain-gauge-daily-card" class="wave-card-container" style="display: none;">
-              <div id="rain-daily-overlay" class="rain-overlay" aria-hidden="true"></div>
-              <div class="rain-info" style="z-index:2; position:relative;">
-                <h4>Daily Rainfall</h4>
-                <div class="wave-card-content">
-                  <i class="fas fa-cloud-rain"></i>
-                  <span id="rain-gauge-daily-value" class="sensor-value"></span>
-                </div>
-                <svg id="rain-daily-wave" width="100%" height="120" viewBox="0 0 100 120" preserveAspectRatio="none">
-                  <defs>
-                    <style>
-                      @keyframes realRaindropFall {
-                        0% { transform: translateY(-20px); opacity: 0; }
-                        10% { opacity: 1; }
-                        90% { opacity: 1; }
-                        100% { transform: translateY(120px); opacity: 0; }
-                      }
-                    </style>
-                  </defs>
-                  <g id="rainDrops"></g>
-                </svg>
-              </div>
+          <section class="control-section">
+            <div class="controls">
+              <button id="restart-button" class="action-button" onclick="restartDevice()">
+                <i class="fas fa-redo"></i> Restart Device
+              </button>
             </div>
+          </section>
 
-            <!-- Weekly Rain Gauge -->
-            <div id="rain-gauge-weekly-card" class="wave-card-container" style="display: none;">
-              <div id="rain-weekly-overlay" class="rain-overlay" aria-hidden="true"></div>
-              <div class="rain-info" style="z-index:2; position:relative;">
-                <h4>Weekly Rainfall</h4>
-                <div class="wave-card-content">
-                  <i class="fas fa-cloud-rain"></i>
-                  <span id="rain-gauge-weekly-value" class="sensor-value"></span>
-                </div>
-                <svg id="rain-weekly-wave" width="100%" height="120" viewBox="0 0 100 120" preserveAspectRatio="none">
-                  <defs>
-                    <style>
-                      @keyframes realRaindropFall {
-                        0% { transform: translateY(-20px); opacity: 0; }
-                        10% { opacity: 1; }
-                        90% { opacity: 1; }
-                        100% { transform: translateY(120px); opacity: 0; }
-                      }
-                    </style>
-                  </defs>
-                  <g id="rainDrops"></g>
-                </svg>
-              </div>
-            </div>
-          </div>
-
-          <!-- Calibration Section (Collapsible) -->
-     <div id="calibration-section" style="display: none; margin-bottom: 20px;">
+        <!-- PROTOCOL COLLAPSIBLE - NOW IDENTICAL TO GATEWAY -->
+<section class="control-section" id="protocol-section">
   <button class="collapsible">
-    <span class="section-title"><i class="fas fa-tools"></i> Sensor Calibration</span>
+    <span><i class="fas fa-exchange-alt"></i> Messaging Protocol Configuration</span>
     <i class="fas fa-chevron-down"></i>
   </button>
   <div class="collapsible-content">
+    <div class="controls">
+      <select id="protocol-select" class="input-field" onchange="updateProtocolUI()">
+        <option value="MQTT">MQTT</option>
+        <option value="HTTP">HTTP</option>
+      </select>
+      <button class="action-button" onclick="setProtocol()"><i class="fas fa-save"></i> Set Protocol</button>
+    </div>
+
+   <!-- MQTT Configuration - SSL ALWAYS ENABLED, CERTIFICATES ALWAYS VISIBLE -->
+<div id="mqtt-section">
+  <h3><i class="fas fa-comments"></i> MQTT Configuration (SSL/TLS Enabled)</h3>
+  
+  <div class="controls">
+    <input type="text" id="weather-mqtt-publish-topic" class="input-field"
+      placeholder="e.g. weather/data or devices/+/telemetry"
+      title="MQTT Publish Topic (allowed: letters, numbers, /, _, +, -)">
+    <button class="action-button" onclick="setWeatherPublishTopic()">
+      <i class="fas fa-save"></i> Set Topic
+    </button>
+  </div>
+
+  <!-- AWS Endpoint (optional) -->
+  <div class="controls">
+    <input type="text" id="aws-endpoint" class="input-field" placeholder="AWS IoT Endpoint (optional)">
+    <button class="action-button" onclick="setAWSEndpoint()"><i class="fas fa-save"></i> Set Endpoint</button>
+  </div>
+
+  <div class="controls">
+    <input type="number" id="mqtt-port" class="input-field" placeholder="Port" value="8883" readonly>
+  </div>
+
+  <!-- Certificate Upload Section - ALWAYS VISIBLE when MQTT selected -->
+  <div id="cert-section" style="display: block; margin-top: 20px;">
+    <h4 style="margin: 15px 0 10px;">Certificates (Required for Secure MQTT)</h4>
+
+    <div class="controls">
+      <label>Root CA Certificate:</label>
+      <input type="text" id="mqtt-ca-cert-path" class="input-field" placeholder="Path to CA cert" readonly>
+      <button class="action-button" onclick="browseWeatherCACert()"><i class="fas fa-folder-open"></i> Browse</button>
+      <button class="action-button success-button" onclick="uploadWeatherCACert()"><i class="fas fa-upload"></i> Upload CA</button>
+    </div>
+
+    <div class="controls">
+      <label>Device Certificate:</label>
+      <input type="text" id="mqtt-device-cert-path" class="input-field" placeholder="Path to device cert" readonly>
+      <button class="action-button" onclick="browseWeatherDeviceCert()"><i class="fas fa-folder-open"></i> Browse</button>
+      <button class="action-button success-button" onclick="uploadWeatherDeviceCert()"><i class="fas fa-upload"></i> Upload Device Cert</button>
+    </div>
+
+    <div class="controls">
+      <label>Private Key:</label>
+      <input type="text" id="mqtt-private-key-path" class="input-field" placeholder="Path to private key" readonly>
+      <button class="action-button" onclick="browseWeatherPrivateKey()"><i class="fas fa-folder-open"></i> Browse</button>
+      <button class="action-button success-button" onclick="uploadWeatherPrivateKey()"><i class="fas fa-upload"></i> Upload Key</button>
+    </div>
+  </div>
+
+ 
+</div>
+
+    <!-- HTTP Configuration -->
+    <div id="http-section" style="display: none;">
+      <h3><i class="fas fa-globe"></i> HTTP Configuration</h3>
+      <div class="controls">
+        <input type="text" id="http-url" class="input-field" placeholder="URL (e.g., https://example.com/data)">
+      </div>
+      <div class="controls">
+        <input type="text" id="http-auth-user" class="input-field" placeholder="Auth User">
+        <input type="password" id="http-auth-password" class="input-field" placeholder="Auth Password">
+      </div>
+     
+    </div>
+  </div>
+</section>
+        </div>
+
+        <!-- RIGHT PANEL -->
+        <div class="right-panel">
+          <div class="container">
+            <section class="control-section" id="sensors-section">
+              <h3><i class="fas fa-microchip"></i> Sensor Protocols</h3>
               <div class="controls">
-                <label>Temperature Offset (°C):</label>
-                <input type="number" id="temp-offset" class="input-field" step="0.1" min="-2" max="2" value="0">
-                <button class="action-button" onclick="setTempCalibration()"><i class="fas fa-save"></i> Set</button>
+                <select id="sensor-select" class="input-field" onchange="updateSensorUI()">
+                  <option value="" disabled selected>Select a Sensor Protocol</option>
+                  <option value="I2C">I2C</option>
+                  <option value="ADC">ADC</option>
+                  <option value="RS232">RS232</option>
+                  <option value="RS485">RS485</option>
+                  <option value="SPI">SPI</option>
+                </select>
               </div>
-              <div class="controls">
-                <label>Humidity Offset (%):</label>
-                <input type="number" id="hum-offset" class="input-field" step="1" min="-10" max="10" value="0" style="margin-left: 38px;">
-                <button class="action-button" onclick="setHumCalibration()"><i class="fas fa-save"></i> Set</button>
+
+              <div id="sensor-list" class="sensor-list-container"></div>
+              <div id="sensor-data" class="sensor-data-container"></div>
+
+              <!-- SENSOR CARDS -->
+              <div class="sensor-cards" style="margin-bottom: 20px;">
+
+                <!-- Temperature -->
+                <div id="thermometer-container" class="thermometer-container" style="display: none;">
+                  <h4>Temperature</h4>
+                  <div id="thermometer-value" class="sensor-value" style="margin-bottom: 8px;"></div>
+                  <svg width="100" height="220" viewBox="0 0 100 220" class="thermometer">
+                    <defs>
+                      <radialGradient id="liquidGlow" cx="50%" cy="50%" r="60%">
+                        <stop offset="0%" stop-color="#FFFFC8" />
+                        <stop offset="60%" stop-color="#FFF078" />
+                        <stop offset="100%" stop-color="#FFD23C" />
+                      </radialGradient>
+                    </defs>
+                    <rect x="40" y="20" width="20" height="160" rx="10" ry="10" fill="#e0e7ff" stroke="#333"
+                      stroke-width="2" />
+                    <rect id="thermometer-fill" x="42" y="180" width="16" height="0" rx="8" ry="8"
+                      fill="url(#liquidGlow)" />
+                    <circle cx="50" cy="180" r="10" fill="#e0e7ff" stroke="#333" stroke-width="2" />
+                    <circle id="thermometer-bulb" cx="50" cy="180" r="8" fill="url(#liquidGlow)" />
+                    <line x1="65" y1="20" x2="70" y2="20" stroke="#333" stroke-width="2" />
+                    <text x="75" y="25" font-size="12" fill="var(--text-color)">50°C</text>
+                    <line x1="65" y1="52" x2="70" y2="52" stroke="#333" stroke-width="1" />
+                    <text x="75" y="57" font-size="12" fill="var(--text-color)">40°C</text>
+                    <line x1="65" y1="84" x2="70" y2="84" stroke="#333" stroke-width="1" />
+                    <text x="75" y="89" font-size="12" fill="var(--text-color)">30°C</text>
+                    <line x1="65" y1="116" x2="70" y2="116" stroke="#333" stroke-width="1" />
+                    <text x="75" y="121" font-size="12" fill="var(--text-color)">20°C</text>
+                    <line x1="65" y1="148" x2="70" y2="148" stroke="#333" stroke-width="1" />
+                    <text x="75" y="153" font-size="12" fill="var(--text-color)">10°C</text>
+                    <line x1="65" y1="180" x2="70" y2="180" stroke="#333" stroke-width="2" />
+                    <text x="75" y="185" font-size="12" fill="var(--text-color)">0°C</text>
+                  </svg>
+                </div>
+
+                <!-- Humidity -->
+                <div id="humidity-card" class="wave-card-container" style="display: none;">
+                  <h4>Humidity</h4>
+                  <div class="wave-card-content">
+                    <i class="fas fa-water-drop-outlined"></i>
+                    <span id="humidity-value" class="sensor-value"></span>
+                  </div>
+                  <svg id="humidity-wave" width="100%" height="80" viewBox="0 0 100 100" preserveAspectRatio="none">
+                    <defs>
+                      <linearGradient id="waveGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" id="waveColor1" style="stop-color:#3d8eb4;stop-opacity:0.5" />
+                        <stop offset="100%" id="waveColor2" style="stop-color:#0474a8;stop-opacity:1" />
+                      </linearGradient>
+                    </defs>
+                    <path id="wavePath" d="M 0 100 V 100 H 0 Z" fill="url(#waveGradient)" />
+                  </svg>
+                </div>
+
+                <!-- Pressure -->
+                <div id="pressure-card" class="card-container">
+                  <h4>Pressure</h4>
+                  <div class="card-content">
+                    <div id="pressure-value" class="main-value"></div>
+                  </div>
+                  <div class="gauge-container">
+                    <svg class="gauge-svg" viewBox="0 0 200 200">
+                      <defs>
+                        <linearGradient id="gaugeGradientLight" x1="0" y1="0" x2="200" y2="200">
+                          <stop offset="0%" stop-color="#06b6d4" />
+                          <stop offset="25%" stop-color="#10b981" />
+                          <stop offset="50%" stop-color="#f59e0b" />
+                          <stop offset="100%" stop-color="#ef4444" />
+                        </linearGradient>
+                        <linearGradient id="gaugeGradientDark" x1="0" y1="0" x2="200" y2="200">
+                          <stop offset="0%" stop-color="#34d399" />
+                          <stop offset="50%" stop-color="#fbbf24" />
+                          <stop offset="100%" stop-color="#f87171" />
+                        </linearGradient>
+                      </defs>
+                      <circle class="gauge-outer" cx="100" cy="100" r="90" stroke-width="10" />
+                      <circle id="gauge-fill" class="gauge-fill" cx="100" cy="100" r="90" stroke-width="10"
+                        stroke-linecap="round" stroke-dasharray="0 565.48" stroke-dashoffset="0" />
+                    </svg>
+                    <div class="gauge-inner">
+                      <span id="pressure-value-inner" class="pressure-value"></span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Light Intensity -->
+                <div id="light-card" class="card-container"
+                  style="display: none; position: relative; border-radius: 15px; box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1); padding: 15px; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+                  <h4>Light Intensity</h4>
+                  <div id="light-value" class="sensor-value"></div>
+                  <svg id="light-sun" width="120" height="120" viewBox="0 0 120 120"
+                    style="display: none; margin: 10px auto;">
+                    <defs>
+                      <radialGradient id="sunGradient" cx="50%" cy="50%" r="50%">
+                        <stop offset="0%" style="stop-color:#ffeb3b; stop-opacity:1" />
+                        <stop offset="60%" style="stop-color:#ff9800; stop-opacity:0.8" />
+                        <stop offset="100%" style="stop-color:#ff6b00; stop-opacity:0.4" />
+                      </radialGradient>
+                      <filter id="sunGlow" x="-50%" y="-50%" width="200%" height="200%">
+                        <feGaussianBlur stdDeviation="3" result="coloredBlur" />
+                        <feMerge>
+                          <feMergeNode in="coloredBlur" />
+                          <feMergeNode in="SourceGraphic" />
+                        </feMerge>
+                      </filter>
+                    </defs>
+                    <g id="sun-rays" transform="translate(60, 60)">
+                      <line class="sun-ray" x1="0" y1="0" x2="0" y2="-40" stroke="#4b2e00" stroke-width="4" opacity="0">
+                        <animate attributeName="opacity" values="0;0.9;0" dur="4s" repeatCount="indefinite" />
+                        <animate attributeName="y2" values="-35;-50;-35" dur="4s" repeatCount="indefinite" />
+                      </line>
+                      <line class="sun-ray" x1="0" y1="0" x2="28" y2="-28" stroke="#4b2e00" stroke-width="4"
+                        opacity="0">
+                        <animate attributeName="opacity" values="0;0.9;0" dur="4s" begin="0.5s"
+                          repeatCount="indefinite" />
+                        <animate attributeName="x2" values="24;34;24" dur="4s" begin="0.5s" repeatCount="indefinite" />
+                        <animate attributeName="y2" values="-24;-34;-24" dur="4s" begin="0.5s"
+                          repeatCount="indefinite" />
+                      </line>
+                      <line class="sun-ray" x1="0" y1="0" x2="40" y2="0" stroke="#4b2e00" stroke-width="4" opacity="0">
+                        <animate attributeName="opacity" values="0;0.9;0" dur="4s" begin="1s"
+                          repeatCount="indefinite" />
+                        <animate attributeName="x2" values="35;50;35" dur="4s" begin="1s" repeatCount="indefinite" />
+                      </line>
+                      <line class="sun-ray" x1="0" y1="0" x2="28" y2="28" stroke="#4b2e00" stroke-width="4" opacity="0">
+                        <animate attributeName="opacity" values="0;0.9;0" dur="4s" begin="1.5s"
+                          repeatCount="indefinite" />
+                        <animate attributeName="x2" values="24;34;24" dur="4s" begin="1.5s" repeatCount="indefinite" />
+                        <animate attributeName="y2" values="24;34;24" dur="4s" begin="1.5s" repeatCount="indefinite" />
+                      </line>
+                      <line class="sun-ray" x1="0" y1="0" x2="0" y2="40" stroke="#4b2e00" stroke-width="4" opacity="0">
+                        <animate attributeName="opacity" values="0;0.9;0" dur="4s" begin="2s"
+                          repeatCount="indefinite" />
+                        <animate attributeName="y2" values="35;50;35" dur="4s" begin="2s" repeatCount="indefinite" />
+                      </line>
+                      <line class="sun-ray" x1="0" y1="0" x2="-28" y2="28" stroke="#4b2e00" stroke-width="4"
+                        opacity="0">
+                        <animate attributeName="opacity" values="0;0.9;0" dur="4s" begin="2.5s"
+                          repeatCount="indefinite" />
+                        <animate attributeName="x2" values="-24;-34;-24" dur="4s" begin="2.5s"
+                          repeatCount="indefinite" />
+                        <animate attributeName="y2" values="24;34;24" dur="4s" begin="2.5s" repeatCount="indefinite" />
+                      </line>
+                      <line class="sun-ray" x1="0" y1="0" x2="-40" y2="0" stroke="#4b2e00" stroke-width="4" opacity="0">
+                        <animate attributeName="opacity" values="0;0.9;0" dur="4s" begin="3s"
+                          repeatCount="indefinite" />
+                        <animate attributeName="x2" values="-35;-50;-35" dur="4s" begin="3s" repeatCount="indefinite" />
+                      </line>
+                      <line class="sun-ray" x1="0" y1="0" x2="-28" y2="-28" stroke="#4b2e00" stroke-width="4"
+                        opacity="0">
+                        <animate attributeName="opacity" values="0;0.9;0" dur="4s" begin="3.5s"
+                          repeatCount="indefinite" />
+                        <animate attributeName="x2" values="-24;-34;-24" dur="4s" begin="3.5s"
+                          repeatCount="indefinite" />
+                        <animate attributeName="y2" values="-24;-34;-24" dur="4s" begin="3.5s"
+                          repeatCount="indefinite" />
+                      </line>
+                    </g>
+                    <circle id="sun-circle" cx="60" cy="60" r="24" fill="url(#sunGradient)" filter="url(#sunGlow)" />
+                    <circle cx="60" cy="60" r="24" fill="none" stroke="#fff" stroke-width="1" opacity="0.3">
+                      <animate attributeName="r" values="24;28;24" dur="4s" repeatCount="indefinite" />
+                      <animate attributeName="opacity" values="0.3;0.1;0.3" dur="4s" repeatCount="indefinite" />
+                    </circle>
+                  </svg>
+                  <svg id="light-moon" width="120" height="120" viewBox="0 0 120 120"
+                    style="display: none; margin: 10px auto;">
+                    <defs>
+                      <radialGradient id="moonGradient" cx="50%" cy="50%" r="50%">
+                        <stop offset="0%" style="stop-color:#677484; stop-opacity:0.9" />
+                        <stop offset="70%" style="stop-color:#677484; stop-opacity:0.6" />
+                        <stop offset="100%" style="stop-color:#4682b4; stop-opacity:0.3" />
+                      </radialGradient>
+                      <filter id="moonGlow" x="-50%" y="-50%" width="200%" height="200%">
+                        <feGaussianBlur stdDeviation="4" result="coloredBlur" />
+                        <feMerge>
+                          <feMergeNode in="coloredBlur" />
+                          <feMergeNode in="SourceGraphic" />
+                        </feMerge>
+                      </filter>
+                    </defs>
+                    <path id="moon-shape" d="M60 20 A40 40 0 0 1 60 100 A40 40 0 0 1 60 20 C80 30 80 90 60 100"
+                      fill="url(#moonGradient)" filter="url(#moonGlow)" />
+                    <g id="moon-sparkles">
+                      <circle cx="40" cy="40" r="2" fill="#fff" opacity="0">
+                        <animate attributeName="opacity" values="0;0.7;0" dur="2s" repeatCount="indefinite" />
+                        <animate attributeName="r" values="2;3;2" dur="2s" repeatCount="indefinite" />
+                      </circle>
+                      <circle cx="80" cy="80" r="2" fill="#fff" opacity="0">
+                        <animate attributeName="opacity" values="0;0.7;0" dur="2.5s" begin="0.5s"
+                          repeatCount="indefinite" />
+                        <animate attributeName="r" values="2;3;2" dur="2.5s" begin="0.5s" repeatCount="indefinite" />
+                      </circle>
+                      <circle cx="50" cy="70" r="2" fill="#fff" opacity="0">
+                        <animate attributeName="opacity" values="0;0.7;0" dur="3s" begin="1s"
+                          repeatCount="indefinite" />
+                        <animate attributeName="r" values="2;3;2" dur="3s" begin="1s" repeatCount="indefinite" />
+                      </circle>
+                    </g>
+                  </svg>
+                </div>
+
+                <!-- Battery Voltage -->
+                <div id="battery-card" class="card-container"
+                  style="display: none; position: relative; padding: 15px; text-align: center;">
+                  <h4>Battery Voltage</h4>
+                  <div id="battery-value" class="sensor-value" style="margin-bottom: 10px;"></div>
+                  <div style="display: inline-block;">
+                    <svg id="battery-icon" width="80" height="100" viewBox="0 0 80 100">
+                      <rect x="20" y="20" width="40" height="70" rx="5" ry="5" fill="#e0e7ff" stroke="#333"
+                        stroke-width="2" />
+                      <rect x="30" y="10" width="20" height="10" fill="#e0e7ff" stroke="#333" stroke-width="2" />
+                      <rect id="battery-fill" x="22" y="20" width="36" height="0" rx="4" ry="4" fill="#34d399" />
+                    </svg>
+                  </div>
+                </div>
+
+                <!-- Hourly Rain Gauge -->
+                <div id="rain-gauge-hourly-card" class="wave-card-container" style="display: none;">
+                  <div id="rain-hourly-overlay" class="rain-overlay" aria-hidden="true"></div>
+                  <div class="rain-info" style="z-index:2; position:relative;">
+                    <h4>Hourly Rainfall</h4>
+                    <div class="wave-card-content">
+                      <i class="fas fa-cloud-rain"></i>
+                      <span id="rain-gauge-hourly-value" class="sensor-value"></span>
+                    </div>
+                    <svg id="rain-hourly-wave" width="100%" height="120" viewBox="0 0 100 120"
+                      preserveAspectRatio="none">
+                      <defs>
+                        <style>
+                          @keyframes realRaindropFall {
+                            0% {
+                              transform: translateY(-20px);
+                              opacity: 0;
+                            }
+
+                            10% {
+                              opacity: 1;
+                            }
+
+                            90% {
+                              opacity: 1;
+                            }
+
+                            100% {
+                              transform: translateY(120px);
+                              opacity: 0;
+                            }
+                          }
+                        </style>
+                      </defs>
+                      <g id="rainDrops"></g>
+                    </svg>
+                  </div>
+                </div>
+
+                <!-- Daily Rain Gauge -->
+                <div id="rain-gauge-daily-card" class="wave-card-container" style="display: none;">
+                  <div id="rain-daily-overlay" class="rain-overlay" aria-hidden="true"></div>
+                  <div class="rain-info" style="z-index:2; position:relative;">
+                    <h4>Daily Rainfall</h4>
+                    <div class="wave-card-content">
+                      <i class="fas fa-cloud-rain"></i>
+                      <span id="rain-gauge-daily-value" class="sensor-value"></span>
+                    </div>
+                    <svg id="rain-daily-wave" width="100%" height="120" viewBox="0 0 100 120"
+                      preserveAspectRatio="none">
+                      <defs>
+                        <style>
+                          @keyframes realRaindropFall {
+                            0% {
+                              transform: translateY(-20px);
+                              opacity: 0;
+                            }
+
+                            10% {
+                              opacity: 1;
+                            }
+
+                            90% {
+                              opacity: 1;
+                            }
+
+                            100% {
+                              transform: translateY(120px);
+                              opacity: 0;
+                            }
+                          }
+                        </style>
+                      </defs>
+                      <g id="rainDrops"></g>
+                    </svg>
+                  </div>
+                </div>
+
+                <!-- Weekly Rain Gauge -->
+                <div id="rain-gauge-weekly-card" class="wave-card-container" style="display: none;">
+                  <div id="rain-weekly-overlay" class="rain-overlay" aria-hidden="true"></div>
+                  <div class="rain-info" style="z-index:2; position:relative;">
+                    <h4>Weekly Rainfall</h4>
+                    <div class="wave-card-content">
+                      <i class="fas fa-cloud-rain"></i>
+                      <span id="rain-gauge-weekly-value" class="sensor-value"></span>
+                    </div>
+                    <svg id="rain-weekly-wave" width="100%" height="120" viewBox="0 0 100 120"
+                      preserveAspectRatio="none">
+                      <defs>
+                        <style>
+                          @keyframes realRaindropFall {
+                            0% {
+                              transform: translateY(-20px);
+                              opacity: 0;
+                            }
+
+                            10% {
+                              opacity: 1;
+                            }
+
+                            90% {
+                              opacity: 1;
+                            }
+
+                            100% {
+                              transform: translateY(120px);
+                              opacity: 0;
+                            }
+                          }
+                        </style>
+                      </defs>
+                      <g id="rainDrops"></g>
+                    </svg>
+                  </div>
+                </div>
               </div>
-              <div class="controls">
-                <label>Pressure Offset (hPa):</label>
-                <input type="number" id="press-offset" class="input-field" step="1" min="-10" max="10" value="0" style="margin-left: 25px;">
-                <button class="action-button" onclick="setPressCalibration()"><i class="fas fa-save"></i> Set</button>
+
+              <!-- Calibration Section (Collapsible) -->
+              <div id="calibration-section" style="display: none; margin-bottom: 20px;">
+                <button class="collapsible">
+                  <span class="section-title"><i class="fas fa-tools"></i> Sensor Calibration</span>
+                  <i class="fas fa-chevron-down"></i>
+                </button>
+                <div class="collapsible-content">
+                  <div class="controls">
+                    <label>Temperature Offset (°C):</label>
+                    <input type="number" id="temp-offset" class="input-field" step="0.1" min="-2" max="2" value="0">
+                    <button class="action-button" onclick="setTempCalibration()"><i class="fas fa-save"></i>
+                      Set</button>
+                  </div>
+                  <div class="controls">
+                    <label>Humidity Offset (%):</label>
+                    <input type="number" id="hum-offset" class="input-field" step="1" min="-10" max="10" value="0"
+                      style="margin-left: 38px;">
+                    <button class="action-button" onclick="setHumCalibration()"><i class="fas fa-save"></i> Set</button>
+                  </div>
+                  <div class="controls">
+                    <label>Pressure Offset (hPa):</label>
+                    <input type="number" id="press-offset" class="input-field" step="1" min="-10" max="10" value="0"
+                      style="margin-left: 25px;">
+                    <button class="action-button" onclick="setPressCalibration()"><i class="fas fa-save"></i>
+                      Set</button>
+                  </div>
+                  <div class="controls">
+                    <button class="action-button" onclick="resetCalibration()"><i class="fas fa-undo"></i> Reset
+                      Calibration</button>
+                  </div>
+                </div>
               </div>
+            </section>
+
+            <section class="control-section">
+              <h3><i class="fas fa-file-alt"></i> UART Logs</h3>
               <div class="controls">
-                <button class="action-button" onclick="resetCalibration()"><i class="fas fa-undo"></i> Reset Calibration</button>
+                <button class="action-button" onclick="clearOutput()"><i class="fas fa-trash"></i> Clear Logs</button>
+              </div>
+              <div id="output"></div>
+            </section>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Gateway Section -->
+    <div id="gateway-section" class="content-section" style="display: none;">
+      <div class="panels-container"
+        style="display: flex; width: 100%; height: calc(100vh - 4.5rem - 40px); gap: 20px; padding: 20px;">
+        <!-- Gateway Left Panel -->
+        <div class="left-panel">
+          <!-- NEW: Serial Port Section for Gateway -->
+          <section class="control-section">
+            <h3><i class="fas fa-plug"></i> Serial Port</h3>
+            <div class="controls">
+              <button class="action-button" onclick="listPortsGateway()"><i class="fas fa-list"></i> List Ports</button>
+              <select id="gateway-ports" class="input-field"></select>
+              <select id="gateway-baud-rate" class="input-field">
+                <option value="9600">9600</option>
+                <option value="19200">19200</option>
+                <option value="38400">38400</option>
+                <option value="57600">57600</option>
+                <option value="115200" selected>115200</option>
+                <option value="230400">230400</option>
+              </select>
+              <button class="action-button" onclick="connectGatewayPort()"><i class="fas fa-play"></i> Connect</button>
+              <button class="action-button" onclick="disconnectGatewayPort()"><i class="fas fa-stop"></i>
+                Disconnect</button>
+            </div>
+          </section>
+          <section class="control-section">
+            <h3><i class="fas fa-clock"></i> Interval Configuration</h3>
+            <div class="controls">
+              <div class="interval-wrapper">
+                <div class="input-scroll-container">
+                  <input type="number" id="gateway-interval" class="input-field" placeholder="Interval" min="1"
+                    oninput="updateIntervalDisplay()">
+                </div>
+                <span class="interval-suffix">(seconds)</span>
+              </div>
+              <button class="action-button" onclick="setGatewayInterval()"><i class="fas fa-save"></i> Set
+                Interval</button>
+              <button class="action-button" onclick="getGatewayInterval()"><i class="fas fa-eye"></i> Get
+                Interval</button>
+            </div>
+          </section>
+          <div class="controls">
+            <button class="action-button" onclick="getGatewayConfig()">
+              <i class="fas fa-eye"></i> Get Current Config (GET)
+            </button>
+          </div>
+          <section class="control-section">
+            <h3><i class="fas fa-id-badge"></i> Gateway ID</h3>
+            <div class="controls">
+              <input type="text" id="gateway-id" class="input-field" placeholder="Enter Gateway ID (1-9999)"
+                pattern="[0-9]+" title="Only numbers allowed">
+              <button class="action-button" onclick="setGatewayID()"><i class="fas fa-save"></i> Set ID</button>
+            </div>
+          </section>
+
+          <!-- Existing BLE Configuration section -->
+          <section class="control-section">
+            <h3><i class="fab fa-bluetooth-b"></i> BLE Configuration</h3>
+            <div class="controls">
+              <!-- NEW: BLE Address input + Set button -->
+              <input type="text" id="gateway-ble-address" class="input-field" placeholder="AA:BB:CC:DD:EE:FF"
+                maxlength="17" pattern="[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}">
+
+              <button class="action-button" onclick="setGatewayBLEAddress()">
+                <i class="fas fa-save"></i> Set BLE Address
+              </button>
+            </div>
+          </section>
+
+          <!-- Messaging Protocol Collapsible -->
+          <section class="control-section" id="gateway-protocol-section">
+            <button class="collapsible">
+              <span><i class="fas fa-exchange-alt"></i> Messaging Protocol Configuration</span>
+              <i class="fas fa-chevron-down"></i>
+            </button>
+            <div class="collapsible-content">
+              <div class="controls">
+                <select id="gateway-protocol-select" class="input-field" onchange="updateGatewayProtocolUI()">
+                  <option value="MQTT">MQTT</option>
+                  <option value="HTTP">HTTP</option>
+                </select>
+                <button class="action-button" onclick="setGatewayProtocol()"><i class="fas fa-save"></i> Set
+                  Protocol</button>
+              </div>
+
+            <!-- MQTT Configuration - SSL ALWAYS ENABLED, CERTIFICATES ALWAYS VISIBLE -->
+<div id="gateway-mqtt-section">
+  <h3><i class="fas fa-comments"></i> MQTT Configuration (SSL/TLS Enabled)</h3>
+  
+  <div class="controls">
+    <input type="text" id="gateway-mqtt-publish-topic" class="input-field"
+      placeholder="e.g. gateway/data or devices/+/telemetry"
+      title="MQTT Publish Topic (allowed: letters, numbers, /, _, +, -)">
+    <button class="action-button" onclick="setGatewayPublishTopic()">
+      <i class="fas fa-save"></i> Set Topic
+    </button>
+  </div>
+
+  <!-- AWS Endpoint -->
+  <div class="controls">
+    <input type="text" id="aws-endpoint" class="input-field" placeholder="AWS IoT Endpoint">
+    <button class="action-button" onclick="setAWSEndpoint()"><i class="fas fa-save"></i> Set Endpoint</button>
+  </div>
+
+  <div class="controls">
+    <input type="number" id="gateway-mqtt-port" class="input-field" placeholder="Port" value="8883" readonly>
+  </div>
+
+  <!-- Certificate Upload Section - ALWAYS VISIBLE when MQTT selected -->
+  <div id="gateway-cert-section" style="display: block; margin-top: 20px;">
+    <h4 style="margin: 15px 0 10px;">Certificates (Required for Secure MQTT)</h4>
+
+    <!-- CA Certificate -->
+    <div class="controls">
+      <label>Root CA Certificate:</label>
+      <input type="text" id="gateway-ca-cert-path" class="input-field" placeholder="Path to CA cert" readonly>
+      <button class="action-button" onclick="browseGatewayCACert()">
+        <i class="fas fa-folder-open"></i> Browse
+      </button>
+      <button class="action-button success-button" onclick="uploadGatewayCACert()">
+        <i class="fas fa-upload"></i> Upload CA
+      </button>
+    </div>
+
+    <!-- Device Certificate -->
+    <div class="controls">
+      <label>Device Certificate:</label>
+      <input type="text" id="gateway-device-cert-path" class="input-field" placeholder="Path to device cert" readonly>
+      <button class="action-button" onclick="browseGatewayDeviceCert()">
+        <i class="fas fa-folder-open"></i> Browse
+      </button>
+      <button class="action-button success-button" onclick="uploadGatewayDeviceCert()">
+        <i class="fas fa-upload"></i> Upload Device Cert
+      </button>
+    </div>
+
+    <!-- Private Key -->
+    <div class="controls">
+      <label>Private Key:</label>
+      <input type="text" id="gateway-private-key-path" class="input-field" placeholder="Path to private key" readonly>
+      <button class="action-button" onclick="browseGatewayPrivateKey()">
+        <i class="fas fa-folder-open"></i> Browse
+      </button>
+      <button class="action-button success-button" onclick="uploadGatewayPrivateKey()">
+        <i class="fas fa-upload"></i> Upload Key
+      </button>
+    </div>
+  </div>
+
+ 
+</div>
+
+              <!-- HTTP Configuration -->
+              <div id="gateway-http-section" style="display: none;">
+                <h3><i class="fas fa-globe"></i> HTTP Configuration</h3>
+                <div class="controls">
+                  <input type="text" id="gateway-http-url" class="input-field"
+                    placeholder="URL (e.g., http://example.com/data)">
+                </div>
+                <div class="controls">
+                  <input type="text" id="gateway-http-auth-user" class="input-field" placeholder="Auth User">
+                  <input type="password" id="gateway-http-auth-password" class="input-field"
+                    placeholder="Auth Password">
+                </div>
+               
               </div>
             </div>
-          </div>
-        </section>
+          </section>
+          <!-- Added spacer for visual separation -->
+          <div class="section-spacer" style="height: 30px;"></div>
+          <!-- Sensor Type & Payload -->
 
-        <section class="control-section">
-          <h3><i class="fas fa-file-alt"></i> UART Logs</h3>
-          <div class="controls">
-            <button class="action-button" onclick="clearOutput()"><i class="fas fa-trash"></i> Clear Logs</button>
+          <section class="control-section">
+            <h3><i class="fas fa-microchip"></i> Sensor Configuration</h3>
+            <div class="controls">
+              <label for="gateway-sensor-type">Sensor Type:</label>
+              <select id="gateway-sensor-type" class="input-field" onchange="toggleSensorPayloadInput()">
+                <option value="" selected>None</option>
+                <option value="accelerometer">Accelerometer</option>
+                <option value="temp-humidity">Temperature & Humidity</option>
+                <option value="others">Others</option>
+              </select>
+            </div>
+
+            <!-- Sensor Payload Input (appears only when a sensor type is selected) -->
+            <div id="sensor-payload-container" style="display: none; margin-top: 15px;">
+              <div class="controls">
+                <label for="sensor-payload-bytes">Sensor Payload (bytes):</label>
+                <input type="number" id="sensor-payload-bytes" class="input-field"
+                  placeholder="Even number (2, 4, 6...)" min="2" step="2">
+                <button class="action-button" onclick="applySensorPayload()"><i class="fas fa-save"></i> Apply</button>
+              </div>
+
+            </div>
+
+
+          </section>
+
+          <!-- Separate Gateway Payload Section -->
+          <section class="control-section">
+            <h3><i class="fas fa-box"></i> Gateway Payload</h3>
+            <div class="controls">
+              <label for="gateway-total-payload">Total Gateway Payload (bytes):</label>
+              <input type="number" id="gateway-total-payload" class="input-field"
+                placeholder="Even number (e.g., 20, 32)" min="2" step="2">
+              <button class="action-button" onclick="applyGatewayPayload()"><i class="fas fa-save"></i> Apply</button>
+            </div>
+
+          </section>
+        </div>
+
+        <!-- Gateway Right Panel (Logs) -->
+        <div class="right-panel">
+          <div class="container">
+            <section class="control-section">
+              <h3><i class="fas fa-file-alt"></i> Gateway UART Logs</h3>
+              <div class="controls">
+                <button class="action-button" onclick="clearGatewayOutput()"><i class="fas fa-trash"></i> Clear
+                  Logs</button>
+              </div>
+              <div id="gateway-output" class="output-log"></div>
+            </section>
           </div>
-          <div id="output"></div>
-        </section>
+        </div>
       </div>
     </div>
   </div>
 
   <footer>
-    <p><i class="fas fa-copyright"></i> Serial Monitor App © 2025</p>
+    <p><i class="fas fa-copyright"></i> Nordic Serial Monitor App © 2025</p>
   </footer>
 
   <script src="renderer.js"></script>
-  <script>
-    let isLedOn = false;
 
-    async function restartDevice() {
-      const res = await window.electronAPI.sendData('RESTART');
-      const output = document.getElementById('output');
-      if (res.error) {
-        output.innerHTML += `<span class="log-line log-error">Failed to send RESTART command: ${res.error}</span><br>`;
-      } else {
-        output.innerHTML += `<span class="log-line log-success">Sent RESTART command to device.</span><br>`;
-      }
-      output.scrollTop = output.scrollHeight;
-      const button = document.getElementById('restart-button');
-      button.disabled = true;
-      setTimeout(() => {
-        button.disabled = false;
-      }, 5000);
-    }
-
-    function toggleTheme() {
-      document.body.classList.toggle('dark-mode');
-      localStorage.setItem('theme', document.body.classList.contains('dark-mode') ? 'dark' : 'light');
-      const icon = document.querySelector('.theme-toggle i');
-      icon.className = document.body.classList.contains('dark-mode') ? 'fas fa-sun' : 'fas fa-moon';
-    }
-
-    function clearOutput() {
-      document.getElementById('output').innerHTML = '';
-    }
-
-    function updateIntervalDisplay() {
-      const input = document.getElementById('interval');
-      let value = input.value.replace(/[^0-9]/g, ''); // Ensure only numbers
-      input.value = value || ''; // Reset to empty if invalid
-    }
-
-    // Handle collapsible sections
-    document.querySelectorAll('.collapsible').forEach(button => {
-      button.addEventListener('click', function() {
-        this.classList.toggle('active');
-        const content = this.nextElementSibling;
-        content.classList.toggle('active');
-      });
-    });
-
-    if (localStorage.getItem('theme') === 'dark') {
-      document.body.classList.add('dark-mode');
-      document.querySelector('.theme-toggle i').className = 'fas fa-sun';
-    }
-
-    // Ensure setInterval uses the numeric value
-    async function setInterval() {
-      const v = parseInt(document.getElementById("interval").value);
-      if (isNaN(v) || v <= 0) return log("Please enter a valid interval (positive seconds).", "error");
-      const res = await window.electronAPI.setInterval(v);
-      res.error ? log(res.error, "error") : log(res, "success");
-    }
-
-    // Placeholder for log function (to be defined in renderer.js)
-    function log(message, type) {
-      const output = document.getElementById('output');
-      output.innerHTML += `<span class="log-line log-${type}">${message}</span><br>`;
-      output.scrollTop = output.scrollHeight;
-    }
-  </script>
 </body>
+
 </html>

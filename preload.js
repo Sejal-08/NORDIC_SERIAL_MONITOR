@@ -4,6 +4,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
   listPorts: () => ipcRenderer.invoke("list-ports"),
   connectPort: (portName, baudRate) => ipcRenderer.invoke("connect-port", portName, baudRate),
   disconnectPort: () => ipcRenderer.invoke("disconnect-port"),
+   // Weather Station specific
+  weatherSendData: (msg) => ipcRenderer.invoke("weather-send-data", msg),
+  
+  // Gateway specific
+  gatewaySendData: (msg) => ipcRenderer.invoke("gateway-send-data", msg),
+  
+  // Generic (uses whichever port is open)
   sendData: (msg) => ipcRenderer.invoke("send-data", msg),
   setInterval: (interval) => ipcRenderer.invoke("set-interval", interval),
   getInterval: () => ipcRenderer.invoke("get-interval"),
@@ -29,5 +36,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getDeviceID: () => ipcRenderer.invoke("get-device-id"),
   onSerialData: (callback) => ipcRenderer.on("serial-data", (event, data) => callback(data)),
   openFileDialog: () => ipcRenderer.invoke("open-file-dialog"),
+  readFileAsText: (path) => ipcRenderer.invoke("read-file-as-text", path),
   setMQTTCertificates: (paths) => ipcRenderer.invoke("set-mqtt-certificates", paths),
+
+  // Gateway-specific
+  connectGatewayPort: (portName, baudRate) => ipcRenderer.invoke("connect-gateway-port", { portName, baudRate }),
+  disconnectGatewayPort: () => ipcRenderer.invoke("disconnect-gateway-port"),
+ onGatewaySerialData: (callback) => {
+  ipcRenderer.on("gateway-serial-data", (event, data) => {
+    console.log("[PRELOAD] Gateway data received:", data);
+    callback(data);
+  });
+},
 });

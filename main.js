@@ -4,32 +4,43 @@ const { SerialPort } = require("serialport");
 const fs = require("fs").promises;
 
 let mainWindow;
-let port;
+let port;  // Weather station
+let gatewayPort;  // Gateway
 let responseBuffer = "";
-let lastSentCommand = ""; // Track the last sent command to filter echoes
+let lastSentCommand = "";
 
-/**
- * Send a command to the firmware.
- */
-async function sendCommand(message) {
-  if (!port || !port.isOpen) {
-    return { error: "Port not open!" };
+async function sendCommand(message, activePort) {
+  if (!activePort) {
+    return { error: "No port selected" };
   }
 
   try {
-    // Flush UART buffer
-    while (port.readable && port.readableLength > 0) {
-      port.read();
+    // Optional: small drain to clear any stale data
+    if (activePort.readable && activePort.readableLength > 0) {
+      while (activePort.readableLength > 0) {
+        activePort.read();
+      }
     }
+
     const command = message + "\r\n";
-    console.log(`Sending command: ${JSON.stringify(command)}`);
-    mainWindow.webContents.send("serial-data", `> ${message}`);
-    lastSentCommand = message; // Store for echo filtering
+    const portPath = activePort.path || "unknown";
+    console.log(`Sending command to ${portPath}: ${JSON.stringify(command)}`);
+
+    const channel = activePort === gatewayPort ? "gateway-serial-data" : "serial-data";
+    mainWindow.webContents.send(channel, `> ${message}`);
+    lastSentCommand = message;
 
     await new Promise((resolve, reject) => {
-      port.write(command, (err) => (err ? reject(err) : resolve()));
+      activePort.write(command, "utf8", (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
     });
 
+    // Small delay to let firmware process
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    console.log(`Command sent successfully: ${message}`);
     return `Successfully sent: ${message}`;
   } catch (error) {
     console.error(`Failed to send command "${message}":`, error);
@@ -152,6 +163,120 @@ app.on("window-all-closed", () => {
 /**
  * IPC handlers.
  */
+
+// NEW: Gateway-specific connect handler
+ipcMain.handle("connect-gateway-port", async (event, { portName, baudRate = 115200 }) => {
+  try {
+    if (gatewayPort && gatewayPort.isOpen) {
+      await new Promise((resolve) => gatewayPort.close(resolve));
+    }
+
+    gatewayPort = new SerialPort({
+      path: portName,
+      baudRate: parseInt(baudRate),
+      dataBits: 8,
+      parity: "none",
+      stopBits: 1,
+      autoOpen: false,
+    });
+
+    await new Promise((resolve, reject) => {
+      gatewayPort.open((err) => (err ? reject(err) : resolve()));
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+
+  // In connect-gateway-port handler
+gatewayPort.on("data", (data) => {
+  try {
+    const incomingText = data.toString("utf8");
+    console.log(`[GATEWAY RX RAW from ${portName}]: "${incomingText}"`);  // <--- MUST see this in console!
+
+    // Send to renderer - no filtering for now
+    mainWindow.webContents.send("gateway-serial-data", incomingText);
+
+    // Also log to console for debugging
+    console.log(`Sent to renderer via gateway-serial-data: "${incomingText.trim()}"`);
+  } catch (err) {
+    console.error("Gateway serial data error:", err);
+    mainWindow.webContents.send("gateway-serial-data", `Error: ${err.message}`);
+  }
+});
+
+    gatewayPort.on("close", () => {
+      console.log("Gateway port closed");
+      mainWindow.webContents.send("gateway-serial-data", "DISCONNECTED: Gateway port closed");
+    });
+
+    gatewayPort.on("error", (err) => {
+      console.error("Gateway port error:", err.message);
+      mainWindow.webContents.send("gateway-serial-data", `Gateway port error: ${err.message}`);
+      if (gatewayPort.isOpen) gatewayPort.close();
+    });
+
+    return `Gateway connected to ${portName} at ${baudRate} baud`;
+  } catch (error) {
+    console.error("Gateway connect error:", error);
+    return { error: `Failed to connect gateway to ${portName}: ${error.message}` };
+  }
+});
+
+ipcMain.handle("disconnect-gateway-port", async () => {
+  try {
+    if (gatewayPort && gatewayPort.isOpen) {
+      await new Promise((resolve) => gatewayPort.close(resolve));
+      return "Gateway disconnected.";
+    }
+    return "No gateway port to disconnect.";
+  } catch (error) {
+    console.error("Gateway disconnect error:", error);
+    return { error: `Failed to disconnect gateway: ${error.message}` };
+  }
+});
+
+// Weather Station specific commands
+ipcMain.handle("weather-send-data", async (event, message) => {
+  if (!port || !port.isOpen) {
+    console.error("Weather port not open");
+    return { error: "Weather station port not connected" };
+  }
+  console.log(`Weather command: ${message}`);
+  return await sendCommand(message, port);
+});
+
+// Gateway specific commands
+ipcMain.handle("gateway-send-data", async (event, message) => {
+  if (!gatewayPort || !gatewayPort.isOpen) {
+    console.error("Gateway port not open");
+    return { error: "Gateway port not connected" };
+  }
+  console.log(`Gateway command: ${message}`);
+  return await sendCommand(message, gatewayPort);
+});
+
+// Generic send-data (tries to use the most recently connected port)
+ipcMain.handle("send-data", async (event, message) => {
+  let activePort = null;
+  let portType = "none";
+  
+  if (gatewayPort && gatewayPort.isOpen) {
+    activePort = gatewayPort;
+    portType = "gateway";
+  } else if (port && port.isOpen) {
+    activePort = port;
+    portType = "weather";
+  }
+  
+  if (!activePort) {
+    console.error("send-data: No active serial port!");
+    return { error: "No port selected" };
+  }
+
+  console.log(`send-data: Using ${portType} port`);
+  return await sendCommand(message, activePort);
+});
+
+
 ipcMain.handle("list-ports", async () => {
   try {
     const ports = await SerialPort.list();
@@ -161,7 +286,16 @@ ipcMain.handle("list-ports", async () => {
     return { error: `Failed to list ports: ${error.message}` };
   }
 });
-
+ipcMain.handle("read-file-as-text", async (event, filePath) => {
+  try {
+    const data = await fs.readFile(filePath, "utf8");
+    // Remove ALL line breaks - firmware expects single-line certificate
+    const singleLine = data.replace(/\r?\n/g, '');
+    return singleLine;
+  } catch (err) {
+    return { error: err.message };
+  }
+});
 ipcMain.handle("connect-port", async (event, portName, baudRate = 115200) => {
   try {
     if (port && port.isOpen) {
@@ -183,63 +317,55 @@ ipcMain.handle("connect-port", async (event, portName, baudRate = 115200) => {
       port.open((err) => (err ? reject(err) : resolve()));
     });
 
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    // Register data listener BEFORE waiting
+    port.on("data", (data) => {
+      try {
+        const incomingText = data.toString("utf8");
+        console.log(`[WEATHER RX RAW from ${portName}]: "${incomingText}"`);
 
-   port.on("data", (data) => {
-  try {
-    const incomingText = data.toString("utf8");
-    console.log(`Raw data received: "${incomingText}"`);
+        responseBuffer += incomingText;
+        let lines = responseBuffer.split(/\r?\n/);
+        responseBuffer = lines.pop(); // Keep incomplete line
 
-    // Always add to buffer (remove outer skip)
-    responseBuffer += incomingText;
-
-    let lines = responseBuffer.split(/\r?\n/);
-    responseBuffer = lines.pop(); // Keep incomplete line
-
-    for (const line of lines) {
-      const message = line.trim();
-      // Skip firmware echoes: startsWith for precision
-      if (message &&
-          !message.startsWith("RX Received") &&
-          !message.startsWith("Text: ")) {  // Covers "Text: 'COMMAND'"
-        console.log(`Processed line: "${message}"`);
-        mainWindow.webContents.send("serial-data", message);
-      } else {
-        console.log(`Skipping echo line: "${message}"`);
+        for (const line of lines) {
+          const message = line.trim();
+          // Skip firmware echoes
+          if (message &&
+              !message.startsWith("RX Received") &&
+              !message.startsWith("Text: ")) {
+            console.log(`[WEATHER] Processed: "${message}"`);
+            mainWindow.webContents.send("serial-data", message);
+          } else {
+            console.log(`[WEATHER] Skipped echo: "${message}"`);
+          }
+        }
+      } catch (err) {
+        console.error("Weather serial data error:", err);
+        mainWindow.webContents.send("serial-data", `Error: ${err.message}`);
       }
-    }
-  } catch (err) {
-    console.error("Error processing serial data:", err);
-    mainWindow.webContents.send("serial-data", `Error: ${err.message}`);
-  }
-});
+    });
 
     port.on("close", () => {
-      console.log("Serial port closed");
-      mainWindow.webContents.send("serial-data", "DISCONNECTED: Port closed (possibly unplugged)");
+      console.log("Weather port closed");
+      mainWindow.webContents.send("serial-data", "DISCONNECTED: Port closed");
     });
 
     port.on("error", (err) => {
-      console.error("Serial port error:", err.message);
+      console.error("Weather port error:", err.message);
       mainWindow.webContents.send("serial-data", `Port error: ${err.message}`);
-      mainWindow.webContents.send("serial-data", `DISCONNECTED: due to error - ${err.message}`);
-      if (port.isOpen) {
-        port.close();
-      }
+      if (port.isOpen) port.close();
     });
 
-    // Send GET_INTERVAL to initialize data streaming
-    // const initResult = await sendCommand("GET_INTERVAL");
-    // if (initResult.error) {
-    //   console.error("Failed to initialize data streaming:", initResult.error);
-    //   mainWindow.webContents.send("serial-data", `Initialization error: ${initResult.error}`);
-    // } else {
-    //   console.log("Sent GET_INTERVAL to initialize data streaming");
-    // }
+    // Wait longer for port stabilization
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+
+    // Send a simple command to verify connection
+    console.log("Sending initial GET command...");
+    await sendCommand("GET", port);
 
     return `Connected to ${portName} at ${baudRate} baud`;
   } catch (error) {
-    console.error("Connect port error:", error);
+    console.error("Weather connect error:", error);
     return { error: `Failed to connect to ${portName}: ${error.message}` };
   }
 });
@@ -263,7 +389,7 @@ ipcMain.handle("disconnect-port", async () => {
 ipcMain.handle("set-device-id", (event, deviceID) => sendCommand(`SET_DEVICE_ID:${deviceID}`));
 
 // --- Basic config commands ---
-ipcMain.handle("send-data", (event, message) => sendCommand(message));
+// ipcMain.handle("send-data", (event, message) => sendCommand(message));
 ipcMain.handle("get-interval", () => sendCommand("GET_INTERVAL"));
 ipcMain.handle("get-ftp-config", () => sendCommand("GET_FTP_CONFIG"));
 ipcMain.handle("get-mqtt-config", () => sendCommand("GET_MQTT_CONFIG"));
