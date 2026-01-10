@@ -82,7 +82,7 @@
                 <span class="interval-suffix">(seconds)</span>
               </div>
               <button class="action-button" onclick="setInterval()"><i class="fas fa-save"></i> Set Interval</button>
-              <button class="action-button" onclick="getInterval()"><i class="fas fa-eye"></i> Get Interval</button>
+            
             </div>
           </section>
 
@@ -94,87 +94,187 @@
             </div>
           </section>
 
-        <!-- PROTOCOL COLLAPSIBLE - NOW IDENTICAL TO GATEWAY -->
-<section class="control-section" id="protocol-section">
-  <button class="collapsible">
-    <span><i class="fas fa-exchange-alt"></i> Messaging Protocol Configuration</span>
-    <i class="fas fa-chevron-down"></i>
-  </button>
-  <div class="collapsible-content">
-    <div class="controls">
-      <select id="protocol-select" class="input-field" onchange="updateProtocolUI()">
-        <option value="MQTT">MQTT</option>
-        <option value="HTTP">HTTP</option>
-      </select>
-      <button class="action-button" onclick="setProtocol()"><i class="fas fa-save"></i> Set Protocol</button>
-    </div>
+          <!-- PROTOCOL COLLAPSIBLE - NOW WITH THREE OPTIONS -->
+          <section class="control-section" id="protocol-section">
+            <button class="collapsible">
+              <span><i class="fas fa-exchange-alt"></i> Messaging Protocol Configuration</span>
+              <i class="fas fa-chevron-down"></i>
+            </button>
+            <div class="collapsible-content">
+              <div class="controls">
+                <select id="protocol-select" class="input-field" onchange="updateProtocolUI()">
+                  <option value="MQTT">MQTT (AWS IoT - TLS)</option>
+                  <option value="BASIC_MQTT">Basic MQTT</option>
+                  <option value="HTTP">HTTP</option>
+                </select>
+                <!-- We keep individual Set buttons for MQTT & HTTP -->
+                <button class="action-button" onclick="setProtocol()" style="display:none;" id="set-protocol-btn">Set
+                  Protocol</button>
+              </div>
 
-   <!-- MQTT Configuration - SSL ALWAYS ENABLED, CERTIFICATES ALWAYS VISIBLE -->
-<div id="mqtt-section">
-  <h3><i class="fas fa-comments"></i> MQTT Configuration (SSL/TLS Enabled)</h3>
-  
-  <div class="controls">
-    <input type="text" id="weather-mqtt-publish-topic" class="input-field"
-      placeholder="e.g. weather/data or devices/+/telemetry"
-      title="MQTT Publish Topic (allowed: letters, numbers, /, _, +, -)">
-    <button class="action-button" onclick="setWeatherPublishTopic()">
-      <i class="fas fa-save"></i> Set Topic
-    </button>
-  </div>
+              <!-- ===================== MQTT (AWS) Configuration ===================== -->
+              <div id="mqtt-section">
+                <h3><i class="fas fa-cloud"></i> AWS IoT MQTT (SSL/TLS Mandatory)</h3>
 
-  <!-- AWS Endpoint (optional) -->
-  <div class="controls">
-    <input type="text" id="aws-endpoint" class="input-field" placeholder="AWS IoT Endpoint (optional)">
-    <button class="action-button" onclick="setAWSEndpoint()"><i class="fas fa-save"></i> Set Endpoint</button>
-  </div>
+                <div class="controls">
+                  <label>Publish Topic:</label>
+                  <input type="text" id="weather-mqtt-publish-topic" class="input-field"
+                    placeholder="e.g. weather/data or devices/weather/telemetry">
+                </div>
 
-  <div class="controls">
-    <input type="number" id="mqtt-port" class="input-field" placeholder="Port" value="8883" readonly>
-  </div>
+                <div class="controls">
+                  <label>AWS IoT Endpoint:</label>
+                  <input type="text" id="aws-endpoint" class="input-field"
+                    placeholder="e.g. xxxxxxxx-ats.iot.us-east-1.amazonaws.com">
+                </div>
 
-  <!-- Certificate Upload Section - ALWAYS VISIBLE when MQTT selected -->
-  <div id="cert-section" style="display: block; margin-top: 20px;">
-    <h4 style="margin: 15px 0 10px;">Certificates (Required for Secure MQTT)</h4>
+                <!-- AWS IoT MQTT section (inside #mqtt-section) -->
+                <div class="controls">
+                  <label>Extra Port (AWS IoT - TLS):</label>
+                  <input type="number" id="mqtt-port" class="input-field" value="8883" min="1" max="65535">
+                  
+                  </button>
+                </div>
 
-    <div class="controls">
-      <label>Root CA Certificate:</label>
-      <input type="text" id="mqtt-ca-cert-path" class="input-field" placeholder="Path to CA cert" readonly>
-      <button class="action-button" onclick="browseWeatherCACert()"><i class="fas fa-folder-open"></i> Browse</button>
-      <button class="action-button success-button" onclick="uploadWeatherCACert()"><i class="fas fa-upload"></i> Upload CA</button>
-    </div>
+                <!-- Certificates (always required for AWS IoT) -->
+                <div id="cert-section" style="margin-top: 24px;">
+                  <h4><i class="fas fa-lock"></i> Certificates (Required for TLS)</h4>
 
-    <div class="controls">
-      <label>Device Certificate:</label>
-      <input type="text" id="mqtt-device-cert-path" class="input-field" placeholder="Path to device cert" readonly>
-      <button class="action-button" onclick="browseWeatherDeviceCert()"><i class="fas fa-folder-open"></i> Browse</button>
-      <button class="action-button success-button" onclick="uploadWeatherDeviceCert()"><i class="fas fa-upload"></i> Upload Device Cert</button>
-    </div>
+                  <div class="controls">
+                    <label>Root CA Certificate:</label>
+                    <input type="text" id="mqtt-ca-cert-path" class="input-field" placeholder="Path to CA cert"
+                      readonly>
+                    <button class="action-button" onclick="browseWeatherCACert()"><i class="fas fa-folder-open"></i>
+                      Browse</button>
+                    <button class="action-button success-button" onclick="uploadWeatherCACert()"><i
+                        class="fas fa-upload"></i> Upload CA</button>
+                  </div>
 
-    <div class="controls">
-      <label>Private Key:</label>
-      <input type="text" id="mqtt-private-key-path" class="input-field" placeholder="Path to private key" readonly>
-      <button class="action-button" onclick="browseWeatherPrivateKey()"><i class="fas fa-folder-open"></i> Browse</button>
-      <button class="action-button success-button" onclick="uploadWeatherPrivateKey()"><i class="fas fa-upload"></i> Upload Key</button>
-    </div>
-  </div>
+                  <div class="controls">
+                    <label>Device Certificate:</label>
+                    <input type="text" id="mqtt-device-cert-path" class="input-field" placeholder="Path to device cert"
+                      readonly>
+                    <button class="action-button" onclick="browseWeatherDeviceCert()"><i class="fas fa-folder-open"></i>
+                      Browse</button>
+                    <button class="action-button success-button" onclick="uploadWeatherDeviceCert()"><i
+                        class="fas fa-upload"></i> Upload Device</button>
+                  </div>
 
- 
-</div>
+                  <div class="controls">
+                    <label>Private Key:</label>
+                    <input type="text" id="mqtt-private-key-path" class="input-field" placeholder="Path to private key"
+                      readonly>
+                    <button class="action-button" onclick="browseWeatherPrivateKey()"><i class="fas fa-folder-open"></i>
+                      Browse</button>
+                    <button class="action-button success-button" onclick="uploadWeatherPrivateKey()"><i
+                        class="fas fa-upload"></i> Upload Key</button>
+                  </div>
+                </div>
 
-    <!-- HTTP Configuration -->
-    <div id="http-section" style="display: none;">
-      <h3><i class="fas fa-globe"></i> HTTP Configuration</h3>
-      <div class="controls">
-        <input type="text" id="http-url" class="input-field" placeholder="URL (e.g., https://example.com/data)">
-      </div>
-      <div class="controls">
-        <input type="text" id="http-auth-user" class="input-field" placeholder="Auth User">
-        <input type="password" id="http-auth-password" class="input-field" placeholder="Auth Password">
-      </div>
-     
-    </div>
-  </div>
-</section>
+                <!-- Action buttons -->
+                <div class="controls" style="margin-top: 28px; gap: 12px; flex-wrap: wrap;">
+                  <button class="action-button success-button" onclick="setAWSMQTTConfigAll()">
+                    <i class="fas fa-save"></i> Set All MQTT Config
+                  </button>
+
+                  <button class="action-button" onclick="enableAWSMQTT(true)">
+                    <i class="fas fa-power-off"></i> Enable AWS MQTT
+                  </button>
+
+                  <button class="action-button danger-button" onclick="enableAWSMQTT(false)">
+                    <i class="fas fa-power-off"></i> Disable AWS MQTT
+                  </button>
+                </div>
+              </div>
+
+              <!-- ===================== BASIC MQTT Configuration ===================== -->
+              <div id="basic-mqtt-section" style="display: none;">
+                <h3><i class="fas fa-plug"></i> Basic MQTT Configuration</h3>
+
+                <div class="controls">
+                  <label>Broker:</label>
+                  <input type="text" id="basic-mqtt-broker" class="input-field"
+                    placeholder="e.g. test.mosquitto.org or broker.example.com">
+                </div>
+
+                <!-- Basic MQTT section (inside #basic-mqtt-section) -->
+                <div class="controls">
+                  <label>Basic MQTT Port:</label>
+                  <input type="number" id="basic-mqtt-port" class="input-field" value="1883" min="1" max="65535">
+               
+                  </button>
+                </div>
+
+                <div class="controls">
+                  <label>Client ID:</label>
+                  <input type="text" id="basic-mqtt-client-id" class="input-field"
+                    placeholder="e.g. WeatherStation-001">
+                </div>
+
+                <div class="controls">
+                  <label>Username:</label>
+                  <input type="text" id="basic-mqtt-username" class="input-field" placeholder="(optional)">
+                </div>
+
+                <div class="controls">
+                  <label>Password:</label>
+                  <input type="password" id="basic-mqtt-password" class="input-field" placeholder="(optional)">
+                </div>
+
+                <div class="controls">
+                  <label>Publish Topic:</label>
+                  <input type="text" id="basic-mqtt-publish-topic" class="input-field" placeholder="e.g. weather/data">
+                </div>
+
+                <div class="controls">
+                  <label>Use SSL/TLS:</label>
+                  <select id="basic-mqtt-ssl" class="input-field">
+                    <option value="no">No (1883)</option>
+                    <option value="yes">Yes (8883)</option>
+                  </select>
+                </div>
+
+                <!-- Unified Set Button + Enable/Disable -->
+                <div class="controls" style="margin-top: 20px; gap: 12px; flex-wrap: wrap;">
+                  <button class="action-button success-button" onclick="setBasicMQTTConfig()">
+                    <i class="fas fa-save"></i> Set Basic MQTT Config
+                  </button>
+
+                  <button class="action-button" onclick="enableBasicMQTT(true)">
+                    <i class="fas fa-power-off"></i> Enable
+                  </button>
+
+                  <button class="action-button danger-button" onclick="enableBasicMQTT(false)">
+                    <i class="fas fa-power-off"></i> Disable
+                  </button>
+                </div>
+              </div>
+
+              <!-- HTTP Configuration -->
+              <div id="http-section" style="display: none;">
+                <h3><i class="fas fa-globe"></i> HTTP Configuration</h3>
+                <div class="controls">
+                  <input type="text" id="http-url" class="input-field"
+                    placeholder="URL (e.g., https://example.com/data)">
+                </div>
+                <div class="controls">
+                  <input type="text" id="http-auth-user" class="input-field" placeholder="Auth User">
+                  <input type="password" id="http-auth-password" class="input-field" placeholder="Auth Password">
+                </div>
+
+              </div>
+
+
+            </div>
+          </section>
+          </section>
+
+          <!-- Global refresh button for weather station -->
+          <div class="controls" style="margin: 20px 0; text-align: center;">
+            <button class="action-button info-button" onclick="fetchWeatherConfig()">
+              <i class="fas fa-sync-alt"></i> Get Full Configuration
+            </button>
+          </div>
         </div>
 
         <!-- RIGHT PANEL -->
@@ -251,7 +351,7 @@
                 </div>
 
                 <!-- Pressure -->
-                <div id="pressure-card" class="card-container">
+                <div id="pressure-card" class="card-container" style="display: none;">
                   <h4>Pressure</h4>
                   <div class="card-content">
                     <div id="pressure-value" class="main-value"></div>
@@ -282,8 +382,7 @@
                 </div>
 
                 <!-- Light Intensity -->
-                <div id="light-card" class="card-container"
-                  style="display: none; position: relative; border-radius: 15px; box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1); padding: 15px; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+                <div id="light-card" class="card-container" style="display: none">
                   <h4>Light Intensity</h4>
                   <div id="light-value" class="sensor-value"></div>
                   <svg id="light-sun" width="120" height="120" viewBox="0 0 120 120"
@@ -612,8 +711,8 @@
               </div>
               <button class="action-button" onclick="setGatewayInterval()"><i class="fas fa-save"></i> Set
                 Interval</button>
-              <button class="action-button" onclick="getGatewayInterval()"><i class="fas fa-eye"></i> Get
-                Interval</button>
+              <!-- <button class="action-button" onclick="getGatewayInterval()"><i class="fas fa-eye"></i> Get
+                Interval</button> -->
             </div>
           </section>
           <div class="controls">
@@ -660,72 +759,77 @@
                   Protocol</button>
               </div>
 
-            <!-- MQTT Configuration - SSL ALWAYS ENABLED, CERTIFICATES ALWAYS VISIBLE -->
-<div id="gateway-mqtt-section">
-  <h3><i class="fas fa-comments"></i> MQTT Configuration (SSL/TLS Enabled)</h3>
-  
-  <div class="controls">
-    <input type="text" id="gateway-mqtt-publish-topic" class="input-field"
-      placeholder="e.g. gateway/data or devices/+/telemetry"
-      title="MQTT Publish Topic (allowed: letters, numbers, /, _, +, -)">
-    <button class="action-button" onclick="setGatewayPublishTopic()">
-      <i class="fas fa-save"></i> Set Topic
-    </button>
-  </div>
+              <!-- MQTT Configuration - SSL ALWAYS ENABLED, CERTIFICATES ALWAYS VISIBLE -->
+              <div id="gateway-mqtt-section">
+                <h3><i class="fas fa-comments"></i> MQTT Configuration (SSL/TLS Enabled)</h3>
 
-  <!-- AWS Endpoint -->
-  <div class="controls">
-    <input type="text" id="aws-endpoint" class="input-field" placeholder="AWS IoT Endpoint">
-    <button class="action-button" onclick="setAWSEndpoint()"><i class="fas fa-save"></i> Set Endpoint</button>
-  </div>
+                <div class="controls">
+                  <input type="text" id="gateway-mqtt-publish-topic" class="input-field"
+                    placeholder="e.g. gateway/data or devices/+/telemetry"
+                    title="MQTT Publish Topic (allowed: letters, numbers, /, _, +, -)">
+                  <button class="action-button" onclick="setGatewayPublishTopic()">
+                    <i class="fas fa-save"></i> Set Topic
+                  </button>
+                </div>
 
-  <div class="controls">
-    <input type="number" id="gateway-mqtt-port" class="input-field" placeholder="Port" value="8883" readonly>
-  </div>
+                <!-- AWS Endpoint -->
+                <div class="controls">
+                  <input type="text" id="aws-endpoint" class="input-field" placeholder="AWS IoT Endpoint">
+                  <button class="action-button" onclick="setAWSEndpoint()"><i class="fas fa-save"></i> Set
+                    Endpoint</button>
+                </div>
 
-  <!-- Certificate Upload Section - ALWAYS VISIBLE when MQTT selected -->
-  <div id="gateway-cert-section" style="display: block; margin-top: 20px;">
-    <h4 style="margin: 15px 0 10px;">Certificates (Required for Secure MQTT)</h4>
+                <div class="controls">
+                  <input type="number" id="gateway-mqtt-port" class="input-field" placeholder="Port" value="8883"
+                    readonly>
+                </div>
 
-    <!-- CA Certificate -->
-    <div class="controls">
-      <label>Root CA Certificate:</label>
-      <input type="text" id="gateway-ca-cert-path" class="input-field" placeholder="Path to CA cert" readonly>
-      <button class="action-button" onclick="browseGatewayCACert()">
-        <i class="fas fa-folder-open"></i> Browse
-      </button>
-      <button class="action-button success-button" onclick="uploadGatewayCACert()">
-        <i class="fas fa-upload"></i> Upload CA
-      </button>
-    </div>
+                <!-- Certificate Upload Section - ALWAYS VISIBLE when MQTT selected -->
+                <div id="gateway-cert-section" style="display: block; margin-top: 20px;">
+                  <h4 style="margin: 15px 0 10px;">Certificates (Required for Secure MQTT)</h4>
 
-    <!-- Device Certificate -->
-    <div class="controls">
-      <label>Device Certificate:</label>
-      <input type="text" id="gateway-device-cert-path" class="input-field" placeholder="Path to device cert" readonly>
-      <button class="action-button" onclick="browseGatewayDeviceCert()">
-        <i class="fas fa-folder-open"></i> Browse
-      </button>
-      <button class="action-button success-button" onclick="uploadGatewayDeviceCert()">
-        <i class="fas fa-upload"></i> Upload Device Cert
-      </button>
-    </div>
+                  <!-- CA Certificate -->
+                  <div class="controls">
+                    <label>Root CA Certificate:</label>
+                    <input type="text" id="gateway-ca-cert-path" class="input-field" placeholder="Path to CA cert"
+                      readonly>
+                    <button class="action-button" onclick="browseGatewayCACert()">
+                      <i class="fas fa-folder-open"></i> Browse
+                    </button>
+                    <button class="action-button success-button" onclick="uploadGatewayCACert()">
+                      <i class="fas fa-upload"></i> Upload CA
+                    </button>
+                  </div>
 
-    <!-- Private Key -->
-    <div class="controls">
-      <label>Private Key:</label>
-      <input type="text" id="gateway-private-key-path" class="input-field" placeholder="Path to private key" readonly>
-      <button class="action-button" onclick="browseGatewayPrivateKey()">
-        <i class="fas fa-folder-open"></i> Browse
-      </button>
-      <button class="action-button success-button" onclick="uploadGatewayPrivateKey()">
-        <i class="fas fa-upload"></i> Upload Key
-      </button>
-    </div>
-  </div>
+                  <!-- Device Certificate -->
+                  <div class="controls">
+                    <label>Device Certificate:</label>
+                    <input type="text" id="gateway-device-cert-path" class="input-field"
+                      placeholder="Path to device cert" readonly>
+                    <button class="action-button" onclick="browseGatewayDeviceCert()">
+                      <i class="fas fa-folder-open"></i> Browse
+                    </button>
+                    <button class="action-button success-button" onclick="uploadGatewayDeviceCert()">
+                      <i class="fas fa-upload"></i> Upload Device Cert
+                    </button>
+                  </div>
 
- 
-</div>
+                  <!-- Private Key -->
+                  <div class="controls">
+                    <label>Private Key:</label>
+                    <input type="text" id="gateway-private-key-path" class="input-field"
+                      placeholder="Path to private key" readonly>
+                    <button class="action-button" onclick="browseGatewayPrivateKey()">
+                      <i class="fas fa-folder-open"></i> Browse
+                    </button>
+                    <button class="action-button success-button" onclick="uploadGatewayPrivateKey()">
+                      <i class="fas fa-upload"></i> Upload Key
+                    </button>
+                  </div>
+                </div>
+
+
+              </div>
 
               <!-- HTTP Configuration -->
               <div id="gateway-http-section" style="display: none;">
@@ -739,7 +843,7 @@
                   <input type="password" id="gateway-http-auth-password" class="input-field"
                     placeholder="Auth Password">
                 </div>
-               
+
               </div>
             </div>
           </section>

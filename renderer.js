@@ -70,14 +70,20 @@ function gatewayLog(message, type = "default") {
 /* ------------------------------------------------------------------ */
 if (window.electronAPI && typeof window.electronAPI.onSerialData === "function") {
   console.log("Registering Weather Station serial data listener...");
-  
+
   window.electronAPI.onSerialData((rawData) => {
     // Don't buffer - just display immediately for raw output
     const lines = rawData.split(/\r?\n/);
-    
+
     lines.forEach((line) => {
       const trimmed = line.trim();
       if (!trimmed) return; // Skip empty lines
+
+      // Silently skip the startup banner
+      if (trimmed.includes("Weather Station Application Start") ||
+        trimmed.includes("[00:00:") && trimmed.includes("<inf> main:")) {
+        return; // ignore this line
+      }
 
       // Escape HTML special characters
       const escaped = trimmed
@@ -99,7 +105,7 @@ if (window.electronAPI && typeof window.electronAPI.onSerialData === "function")
   });
 
   console.log("Weather Station UART listener registered successfully");
-  log("Weather Station UART listener active – raw output will appear here", "info");
+
 } else {
   console.error("electronAPI.onSerialData not available!");
 }
@@ -931,10 +937,27 @@ function updateProtocolUI() {
   const p = document.getElementById("protocol-select")?.value;
   if (!p) return;
 
-  document.getElementById("mqtt-section").style.display = p === "MQTT" ? "block" : "none";
-  document.getElementById("http-section").style.display = p === "HTTP" ? "block" : "none";
-  if (p === "MQTT") toggleCertUploadAndPort();
-  else document.getElementById("weather-cert-upload-button").style.display = "none";
+  // Hide all
+  document.getElementById("mqtt-section").style.display = "none";
+  document.getElementById("basic-mqtt-section").style.display = "none";
+  document.getElementById("http-section").style.display = "none";
+
+  if (p === "MQTT") {
+    document.getElementById("mqtt-section").style.display = "block";
+    // Suggest AWS default
+    document.getElementById("mqtt-port").value = "8883";
+  }
+  else if (p === "BASIC_MQTT") {
+    document.getElementById("basic-mqtt-section").style.display = "block";
+    // Suggest common defaults
+    const current = document.getElementById("basic-mqtt-port").value;
+    if (!current || current === "8883") {
+      document.getElementById("basic-mqtt-port").value = "1883"; // non-SSL default
+    }
+  }
+  else if (p === "HTTP") {
+    document.getElementById("http-section").style.display = "block";
+  }
 }
 
 // function toggleCertUploadAndPort() {
@@ -1094,6 +1117,239 @@ async function uploadWeatherCertificates() {
   log("All certificates processed. Use 'GET' to verify.", "info");
 }
 
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Basic MQTT (public broker, no certificates)
+// ──────────────────────────────────────────────────────────────────────────────
+
+async function setBasicMQTTConfig() {
+  const broker = document.getElementById("basic-mqtt-broker")?.value.trim();
+  const portStr = document.getElementById("basic-mqtt-port")?.value.trim();
+  const clientId = document.getElementById("basic-mqtt-client-id")?.value.trim();
+  const username = document.getElementById("basic-mqtt-username")?.value.trim();
+  const password = document.getElementById("basic-mqtt-password")?.value;
+  const topic = document.getElementById("basic-mqtt-publish-topic")?.value.trim();
+  const ssl = document.getElementById("basic-mqtt-ssl")?.value;
+
+  // No required fields anymore — only send what is filled
+  const commands = [];
+
+  if (broker) commands.push(`SET_BASIC_BROKER:${broker}`);
+  if (portStr && !isNaN(parseInt(portStr))) {
+    const port = parseInt(portStr);
+    if (port >= 1 && port <= 65535) {
+      commands.push(`SET_BASIC_PORT:${port}`);
+    }
+  }
+  if (clientId) commands.push(`SET_MQTT_CLIENT_ID:${clientId}`);
+  if (username) commands.push(`SET_MQTT_USERNAME:${username}`);
+  if (password) commands.push(`SET_MQTT_PASSWORD:${password}`);
+  if (topic) commands.push(`SET_PUBLISH_TOPIC:${topic}`);
+  if (ssl) commands.push(`SET_MQTT_USE_SSL:${ssl === "yes" ? "1" : "0"}`);
+
+  if (commands.length === 0) {
+    log("No Basic MQTT fields filled – nothing to apply.", "info");
+    return;
+  }
+
+  log(`Applying Basic MQTT configuration (${commands.length} changes)...`, "info");
+
+  try {
+    for (const cmd of commands) {
+      const res = await window.electronAPI.sendData(cmd + "\r\n");
+      if (res?.error) {
+        log(`Failed: ${cmd} → ${res.error}`, "error");
+        return; // Stop on first error
+      }
+      log(`Success: ${cmd}`, "success");
+      await new Promise(r => setTimeout(r, 450));
+    }
+
+    log("Basic MQTT configuration updated (only filled fields applied)!", "success");
+
+  } catch (err) {
+    log(`Error applying Basic MQTT: ${err.message}`, "error");
+  }
+}
+async function enableBasicMQTT(enable = true) {
+  const cmd = enable ? "ENABLE_BASIC_MQTT" : "DISABLE_BASIC_MQTT";
+
+  log(`Sending: ${cmd}...`, "info");
+
+  const res = await window.electronAPI.sendData(cmd + "\r\n");
+  if (res?.error) {
+    log(`Failed: ${res.error}`, "error");
+  } else {
+    log(`Basic MQTT ${enable ? "ENABLED" : "DISABLED"}`, enable ? "success" : "warning");
+
+    // await new Promise(r => setTimeout(r, 800));
+    // await window.electronAPI.sendData("GET\r\n");
+  }
+}
+
+// Updated protocol switcher
+function updateProtocolUI() {
+  const p = document.getElementById("protocol-select")?.value;
+
+  // Hide all sections
+  document.getElementById("mqtt-section").style.display = "none";
+  document.getElementById("basic-mqtt-section").style.display = "none";
+  document.getElementById("http-section").style.display = "none";
+
+  if (p === "MQTT") {
+    document.getElementById("mqtt-section").style.display = "block";
+  } else if (p === "BASIC_MQTT") {
+    document.getElementById("basic-mqtt-section").style.display = "block";
+  } else if (p === "HTTP") {
+    document.getElementById("http-section").style.display = "block";
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// AWS IoT MQTT (the one with certificates - "Extra Broker")
+// ──────────────────────────────────────────────────────────────────────────────
+
+async function setAWSMQTTConfigAll() {
+  const topic = document.getElementById("weather-mqtt-publish-topic")?.value.trim();
+  const endpoint = document.getElementById("aws-endpoint")?.value.trim();
+  const portStr = document.getElementById("mqtt-port")?.value.trim();
+
+  // No required fields anymore — only send what is filled
+  const commands = [];
+
+  if (endpoint) {
+    commands.push(`SET_AWS_ENDPOINT:${endpoint}`);
+  }
+  if (topic) {
+    commands.push(`SET_PUBLISH_TOPIC:${topic}`);
+  }
+  if (portStr && !isNaN(parseInt(portStr))) {
+    const port = parseInt(portStr);
+    if (port >= 1 && port <= 65535) {
+      commands.push(`SET_EXTRA_PORT:${port}`);
+    }
+  }
+
+  if (commands.length === 0) {
+    log("No AWS IoT fields filled – nothing to apply.", "info");
+    return;
+  }
+
+  log(`Applying AWS IoT configuration (${commands.length} changes)...`, "info");
+
+  try {
+    for (const cmd of commands) {
+      const res = await window.electronAPI.sendData(cmd + "\r\n");
+      if (res?.error) {
+        log(`Failed: ${cmd} → ${res.error}`, "error");
+        return; // Stop on first error
+      }
+      log(`Success: ${cmd}`, "success");
+      await new Promise(r => setTimeout(r, 450));
+    }
+
+    log("AWS IoT configuration updated (only filled fields applied)!", "success");
+
+  } catch (err) {
+    log(`Error applying AWS IoT config: ${err.message}`, "error");
+  }
+}
+
+async function enableAWSMQTT(enable = true) {
+  const cmd = enable ? "ENABLE_EXTRA_MQTT" : "DISABLE_EXTRA_MQTT";
+
+  log(`Sending: ${cmd}...`, "info");
+
+  const res = await window.electronAPI.sendData(cmd + "\r\n");
+  if (res?.error) {
+    log(`Failed: ${res.error}`, "error");
+  } else {
+    log(`AWS IoT MQTT ${enable ? "ENABLED" : "DISABLED"}`, enable ? "success" : "warning");
+
+    // await new Promise(r => setTimeout(r, 800));
+    // await window.electronAPI.sendData("GET\r\n");
+  }
+}
+// For AWS IoT (Extra Broker) Port
+async function setExtraPort() {
+  const portInput = document.getElementById("mqtt-port");
+  const port = parseInt(portInput?.value?.trim());
+
+  if (!port || isNaN(port) || port < 1 || port > 65535) {
+    log("Please enter a valid port (1–65535) for AWS IoT", "error");
+    return;
+  }
+
+  log(`Setting AWS IoT (extra) port to ${port}...`, "info");
+
+  try {
+    const command = `SET_EXTRA_PORT:${port}`;
+    const res = await window.electronAPI.sendData(command + "\r\n");
+
+    if (res?.error) {
+      log(`Failed: ${res.error}`, "error");
+    } else {
+      log(`AWS IoT extra port set to ${port}`, "success");
+      // Optional: auto-refresh config view
+      await new Promise(r => setTimeout(r, 1000));
+      // await window.electronAPI.sendData("GET\r\n");
+    }
+  } catch (err) {
+    log(`Error: ${err.message}`, "error");
+  }
+}
+
+// For Basic MQTT Port
+async function setBasicPort() {
+  const portInput = document.getElementById("basic-mqtt-port");
+  const port = parseInt(portInput?.value?.trim());
+
+  if (!port || isNaN(port) || port < 1 || port > 65535) {
+    log("Please enter a valid port (1–65535) for Basic MQTT", "error");
+    return;
+  }
+
+  log(`Setting Basic MQTT port to ${port}...`, "info");
+
+  try {
+    const command = `SET_BASIC_PORT:${port}`;
+    const res = await window.electronAPI.sendData(command + "\r\n");
+
+    if (res?.error) {
+      log(`Failed: ${res.error}`, "error");
+    } else {
+      log(`Basic MQTT port set to ${port}`, "success");
+      // Optional: auto-refresh
+      await new Promise(r => setTimeout(r, 1000));
+      // await window.electronAPI.sendData("GET\r\n");
+    }
+  } catch (err) {
+    log(`Error: ${err.message}`, "error");
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Fetch and display full current configuration (GET command)
+// ──────────────────────────────────────────────────────────────────────────────
+async function fetchWeatherConfig() {
+  if (!isConnected) {
+    log("Cannot fetch config: No serial port connected!", "error");
+    return;
+  }
+
+  log("Fetching full current configuration...", "info");
+
+  try {
+    const res = await window.electronAPI.sendData("GET\r\n");
+    if (res?.error) {
+      log(`Failed to send GET: ${res.error}`, "error");
+    } else {
+      log("GET command sent → full configuration (including certificates) will appear in logs", "success");
+    }
+  } catch (err) {
+    log(`Error sending GET: ${err.message}`, "error");
+  }
+}
 /* ------------------------------------------------------------------ */
 /*  CERTIFICATE BROWSING & UPLOAD - GATEWAY                           */
 /* ------------------------------------------------------------------ */
@@ -1221,7 +1477,7 @@ async function setGatewayID() {
     // Auto-verify with GET after a short delay
     await new Promise(r => setTimeout(r, 1000));
     gatewayLog("Automatically sending GET to verify...", "info");
-    await window.electronAPI.sendData("GET\r\n");
+    // await window.electronAPI.sendData("GET\r\n");
 
   } catch (err) {
     gatewayLog(`Error sending command: ${err.message}`, "error");
@@ -1268,7 +1524,7 @@ async function setAWSEndpoint() {
     // Auto-verify with GET after delay
     await new Promise(r => setTimeout(r, 1000));
     gatewayLog("Automatically sending GET to verify current AWS Endpoint...", "info");
-    await window.electronAPI.sendData("GET\r\n");
+    // await window.electronAPI.sendData("GET\r\n");
 
   } catch (err) {
     gatewayLog(`Error sending command: ${err.message}`, "error");
@@ -1472,7 +1728,7 @@ async function setGatewayPublishTopic() {
 
   try {
     await new Promise(resolve => setTimeout(resolve, 300));
-    
+
     // Send command with \r\n as firmware expects
     const res = await window.electronAPI.sendData(command + "\r\n");
 
@@ -1486,7 +1742,7 @@ async function setGatewayPublishTopic() {
     // Auto-verify with GET after delay
     await new Promise(resolve => setTimeout(resolve, 1000));
     gatewayLog("Automatically sending GET to verify...", "info");
-    await window.electronAPI.sendData("GET\r\n");
+    // await window.electronAPI.sendData("GET\r\n");
 
   } catch (err) {
     gatewayLog(`Error sending command: ${err.message}`, "error");
@@ -1548,7 +1804,7 @@ async function applyBlePayload() {
 
       await new Promise(r => setTimeout(r, 1000));
       gatewayLog("Sending GET to verify...", "info");
-      await window.electronAPI.sendData("GET\r\n");
+      // await window.electronAPI.sendData("GET\r\n");
     }
   } catch (err) {
     gatewayLog(`Error: ${err.message}`, "error");
@@ -1598,7 +1854,7 @@ async function applyUploadPayload() {
 
       await new Promise(r => setTimeout(r, 1000));
       gatewayLog("Sending GET to verify...", "info");
-      await window.electronAPI.sendData("GET\r\n");
+      // await window.electronAPI.sendData("GET\r\n");
     }
   } catch (err) {
     gatewayLog(`Error: ${err.message}`, "error");
@@ -1660,7 +1916,7 @@ function applyGatewayPayload() {
 toggleSensorPayloadInput();
 // Weather Station functions (minimal inline)
 async function restartDevice() {
-  const res = await window.electronAPI.sendData('RESTART');
+  const res = await window.electronAPI.sendData('RESTART_DEVICE');
   const output = document.getElementById('output');
   if (res.error) {
     output.innerHTML += `<span class="log-line log-error">Failed to send RESTART command: ${res.error}</span><br>`;
@@ -1904,7 +2160,7 @@ async function setWeatherPublishTopic() {
 
   try {
     await new Promise(resolve => setTimeout(resolve, 300));
-    
+
     const res = await window.electronAPI.sendData(command + "\r\n");
 
     if (res?.error) {
@@ -1916,7 +2172,7 @@ async function setWeatherPublishTopic() {
 
     await new Promise(resolve => setTimeout(resolve, 1000));
     log("Automatically sending GET to verify...", "info");
-    await window.electronAPI.sendData("GET\r\n");
+    // await window.electronAPI.sendData("GET\r\n");
 
   } catch (err) {
     log(`Error sending command: ${err.message}`, "error");
@@ -1931,7 +2187,7 @@ async function setMQTTConfig() {
   const user = document.getElementById("mqtt-user").value.trim();
   const pass = document.getElementById("mqtt-password").value;
   const ssl = document.getElementById("mqtt-ssl").value;
-  
+
   if (!broker && !user && !pass && !topic && ssl === "no") return log("Please enter at least one MQTT configuration field.", "error");
   if (broker && !/^[a-zA-Z0-9.-]+$/.test(broker)) return log("Invalid MQTT broker format.", "error");
   if (topic && !/^[a-zA-Z0-9\/_+#-]+$/.test(topic)) return log("Invalid MQTT topic format.", "error");
@@ -2097,21 +2353,21 @@ window.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-// Gateway interval input validation
-const gatewayIntervalInput = document.getElementById('gateway-interval');
-if (gatewayIntervalInput) {
-  gatewayIntervalInput.addEventListener('input', function () {
-    this.value = this.value.replace(/[^0-9]/g, '');
-  });
+  // Gateway interval input validation
+  const gatewayIntervalInput = document.getElementById('gateway-interval');
+  if (gatewayIntervalInput) {
+    gatewayIntervalInput.addEventListener('input', function () {
+      this.value = this.value.replace(/[^0-9]/g, '');
+    });
 
-  gatewayIntervalInput.addEventListener('keydown', function (event) {
-    const allowedKeys = ['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab', 'Enter'];
-    if (allowedKeys.includes(event.key) || /^[0-9]$/.test(event.key)) {
-      return;
-    }
-    event.preventDefault();
-  });
-}
+    gatewayIntervalInput.addEventListener('keydown', function (event) {
+      const allowedKeys = ['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab', 'Enter'];
+      if (allowedKeys.includes(event.key) || /^[0-9]$/.test(event.key)) {
+        return;
+      }
+      event.preventDefault();
+    });
+  }
   // Weather interval input validation
   const intervalInput = document.getElementById('interval');
   if (intervalInput) {
@@ -2127,8 +2383,7 @@ if (gatewayIntervalInput) {
       event.preventDefault();
     });
   }
-  // Confirmation message
-  gatewayLog("Gateway UART listener active – logs will appear here", "info");
+
   // ================================================================
 });
 
