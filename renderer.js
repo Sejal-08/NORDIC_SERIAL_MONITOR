@@ -72,44 +72,70 @@ if (window.electronAPI && typeof window.electronAPI.onSerialData === "function")
   console.log("Registering Weather Station serial data listener...");
 
   window.electronAPI.onSerialData((rawData) => {
-    // Don't buffer - just display immediately for raw output
+    // Split into lines
     const lines = rawData.split(/\r?\n/);
 
     lines.forEach((line) => {
-      const trimmed = line.trim();
+      let trimmed = line.trim();
       if (!trimmed) return; // Skip empty lines
 
-      // Silently skip the startup banner
-      if (trimmed.includes("Weather Station Application Start") ||
-        trimmed.includes("[00:00:") && trimmed.includes("<inf> main:")) {
-        return; // ignore this line
+      // === FILTER OUT NOISY SENSOR DEBUG LINES ===
+      // Remove timestamp like [00:15:24.814,636]
+      trimmed = trimmed.replace(/^\[\d{2}:\d{2}:\d{2}\.\d{3},\d{3}\]\s*/, '');
+
+      // Remove ANSI color codes ([0m etc.)
+      trimmed = trimmed.replace(/\[.*?m/g, '');
+
+      // Remove log level tags (<inf>, <dbg>, <wrn>)
+      trimmed = trimmed.replace(/<(inf|dbg|wrn)>\s*/g, '');
+
+      // Now trimmed is clean, e.g.:
+      // "sensor: Temp=26.68C Hum=44.63% Press=98.82 hPa"
+      // "sensor: BME680 - Temperature = 26.68 °C"
+
+      // === OPTIONAL: Hide specific noisy lines completely ===
+      if (
+        trimmed.includes("Temp=") && trimmed.includes("Hum=") && trimmed.includes("Press=") ||
+        trimmed.includes("BME680 - Temperature") ||
+        trimmed.includes("BME680 - Humidity") ||
+        trimmed.includes("BME680 - Pressure") ||
+        trimmed.includes("Lux sensor not ready") ||
+        trimmed.includes("Rain sensor GPIO initialized") ||
+        trimmed.includes("Wind sensor UART initialized") ||
+        trimmed.includes("------ Sim status checking") ||
+        trimmed.includes("Sending At command for checking sim_status")
+      ) {
+        // Silently skip these lines from display (but still parse for data)
+        // You can comment this block if you want to keep them visible
+        // return;
       }
 
-      // Escape HTML special characters
-      const escaped = trimmed
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;");
+      // === Display only if line is not empty after cleaning ===
+      if (trimmed) {
+        const escaped = trimmed
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
 
-      const output = document.getElementById("output");
-      if (output) {
-        output.innerHTML += `<span class="log-raw">${escaped}</span><br>`;
-        output.scrollTop = output.scrollHeight;
+        const output = document.getElementById("output");
+        if (output) {
+          output.innerHTML += `<span class="log-raw">${escaped}</span><br>`;
+          output.scrollTop = output.scrollHeight;
+        }
+
+        console.log(`[WEATHER UI] ${trimmed}`);
       }
-
-      console.log(`[WEATHER UI] ${trimmed}`);
     });
 
-    // Also parse for sensor data
+    // Still parse the ORIGINAL raw data for sensor values
+    // (important: parsing needs the full line with JSON)
     parseSensorData(rawData);
   });
 
   console.log("Weather Station UART listener registered successfully");
-
 } else {
   console.error("electronAPI.onSerialData not available!");
 }
-
 // === REGISTER GATEWAY LISTENER EARLY - FIXED CONDITION ===
 if (window.electronAPI && typeof window.electronAPI.onGatewaySerialData === "function") {
   let buffer = ""; // Keep incomplete lines across chunks
@@ -759,168 +785,172 @@ function updateSensorUI() {
 /*  DATA PARSER                                                       */
 /* ------------------------------------------------------------------ */
 function parseSensorData(data) {
-  const protocol = document.getElementById("sensor-select").value;
+  const protocol = document.getElementById("sensor-select")?.value;
   if (!protocol) return;
 
-  const lines = data.split("\n").map((line) => line.trim()).filter((line) => line);
-  lines.forEach((line) => {
-    // Handle calibration responses (only for I2C)
-    if (protocol === "I2C") {
-      if (line.startsWith("TEMP_CALIBRATION:")) {
-        const val = parseFloat(line.split(":")[1].trim());
-        if (!isNaN(val)) {
-          document.getElementById("temp-offset").value = val;
-          log(`Temperature calibration offset: ${val} °C`, "info");
-        }
-        return;
-      } else if (line.startsWith("HUM_CALIBRATION:")) {
-        const val = parseFloat(line.split(":")[1].trim());
-        if (!isNaN(val)) {
-          document.getElementById("hum-offset").value = val;
-          log(`Humidity calibration offset: ${val} %`, "info");
-        }
-        return;
-      } else if (line.startsWith("PRESS_CALIBRATION:")) {
-        const val = parseFloat(line.split(":")[1].trim());
-        if (!isNaN(val)) {
-          document.getElementById("press-offset").value = val;
-          log(`Pressure calibration offset: ${val} hPa`, "info");
-        }
-        return;
-      }
-    }
+  // Clean lines: remove timestamps, ANSI colors, and log level tags
+  const lines = data.split("\n").map(line => {
+    return line
+      .replace(/^\[\d{2}:\d{2}:\d{2}\.\d{3},\d{3}\]\s*/, '')     // Remove [timestamp]
+      .replace(/\[.*?m/g, '')                                    // Remove ANSI escape codes
+      .replace(/<inf>|<dbg>|<wrn>/g, '')                          // Remove log levels
+      .trim();
+  }).filter(line => line && line.length > 0);
 
-    // Handle individual sensor readings (e.g., "BME680 - Temperature: 26.96 °C")
-    const sensorReading = line.match(/^(.+?)\s*-\s*(.+?):\s*(.+)$/);
-    if (sensorReading) {
-      const sensorName = sensorReading[1].trim();
-      const param = sensorReading[2].trim();
-      const value = sensorReading[3].trim();
-
-      const sensors = sensorProtocolMap[protocol] || [];
-      if (sensors.includes(sensorName)) {
-        const ok = !(value === "null" || value === "" || isNaN(parseFloat(value.replace(/[^0-9.-]+/g, ""))));
-        sensorStatus[protocol][sensorName] = ok;
-        if (ok) sensorData[protocol][`${sensorName} ${param}`] = value;
-
-        if (sensorName === "BME680") {
-          if (param === "Temperature") currentTemperature = ok ? parseFloat(value.replace("°C", "").trim()) : null;
-          else if (param === "Humidity") currentHumidity = ok ? parseFloat(value.replace("%", "").trim()) : null;
-          else if (param === "Pressure") currentPressure = ok ? parseFloat(value.replace("hPa", "").trim()) : null;
-        } else if (sensorName === "VEML7700" && param === "Light Intensity") {
-          currentLight = ok ? parseFloat(value.replace("lux", "").trim()) : null;
-        }
-      }
-      updateSensorUI();
+  lines.forEach((cleanLine) => {
+    // Skip irrelevant startup lines
+    if (cleanLine.includes("Weather Station Application Start")) {
       return;
     }
 
-    // Handle JSON format (e.g., "Published to topic 'device/data': {...}")
-    if (line.includes("Published to topic 'device/data'")) {
-      // Robust extraction: find the position after the colon and take the rest as JSON string
-      const colonIndex = line.indexOf(':');
-      const jsonStr = colonIndex !== -1 ? line.substring(colonIndex + 1).trim() : '';
-      if (jsonStr.startsWith('{')) {
-        try {
-          const json = JSON.parse(jsonStr);
-
-          if (protocol === "I2C") {
-            currentTemperature = json.CurrentTemperature;
-            currentHumidity = json.CurrentHumidity;
-            currentPressure = json.AtmPressure;
-            currentLight = json.LightIntensity;
-
-            sensorStatus.I2C.BME680 = currentTemperature !== undefined || currentHumidity !== undefined || currentPressure !== undefined;
-            sensorStatus.I2C.VEML7700 = currentLight !== undefined;
-
-            if (currentTemperature !== undefined) sensorData.I2C["BME680 Temperature"] = `${parseFloat(currentTemperature).toFixed(2)} °C`;
-            if (currentHumidity !== undefined) sensorData.I2C["BME680 Humidity"] = `${parseFloat(currentHumidity).toFixed(2)} %`;
-            if (currentPressure !== undefined) sensorData.I2C["BME680 Pressure"] = `${parseFloat(currentPressure).toFixed(2)} hPa`;
-            if (currentLight !== undefined) sensorData.I2C["VEML7700 Light Intensity"] = `${parseFloat(currentLight).toFixed(2)} lux`;
-          }
-
-          if (protocol === "ADC") {
-            if (json.BatteryVoltage !== undefined) {
-              sensorStatus.ADC["Battery Voltage"] = true;
-              sensorData.ADC["Battery Voltage"] = `${parseFloat(json.BatteryVoltage).toFixed(2)} V`;
-            }
-            if (json.RainfallHourly !== undefined || json.RainfallDaily !== undefined || json.RainfallWeekly !== undefined) {
-              sensorStatus.ADC["Rain Gauge"] = true;
-              if (json.RainfallHourly !== undefined) sensorData.ADC["Rainfall Hourly"] = `${(parseFloat(json.RainfallHourly) * 0.5).toFixed(2)} mm`;
-              if (json.RainfallDaily !== undefined) sensorData.ADC["Rainfall Daily"] = `${(parseFloat(json.RainfallDaily) * 0.5).toFixed(2)} mm`;
-              if (json.RainfallWeekly !== undefined) sensorData.ADC["Rainfall Weekly"] = `${(parseFloat(json.RainfallWeekly) * 0.5).toFixed(2)} mm`;
-            }
-          }
-          updateSensorUI();
-        } catch (e) {
-          // Fallback: Use regex to extract values from malformed JSON string
-          console.log("JSON parse failed, using regex fallback:", e);
-          if (protocol === "ADC") {
-            // Extract BatteryVoltage
-            const batteryMatch = jsonStr.match(/"BatteryVoltage"\s*:\s*([\d.-]+)/);
-            if (batteryMatch) {
-              const voltage = parseFloat(batteryMatch[1]);
-              if (!isNaN(voltage)) {
-                sensorStatus.ADC["Battery Voltage"] = true;
-                sensorData.ADC["Battery Voltage"] = `${voltage.toFixed(2)} V`;
-              }
-            }
-            // Extract Rainfall values
-            const rainfallMatches = jsonStr.match(/"Rainfall(?:Hourly|Daily|Weekly)"\s*:\s*([\d.-]+)/g);
-            if (rainfallMatches && rainfallMatches.length > 0) {
-              sensorStatus.ADC["Rain Gauge"] = true;
-              // Parse each match to set Hourly, Daily, Weekly
-              rainfallMatches.forEach(match => {
-                const keyMatch = match.match(/"Rainfall(.*)"\s*:\s*([\d.-]+)/);
-                if (keyMatch) {
-                  const period = keyMatch[1];
-                  const value = parseFloat(keyMatch[2]);
-                  if (!isNaN(value)) {
-                    const key = `Rainfall ${period}`;
-                    sensorData.ADC[key] = `${(value * 0.5).toFixed(2)} mm`;
-                  }
-                }
-              });
-            }
-          } else if (protocol === "I2C") {
-            // Extract I2C values with regex if needed
-            const tempMatch = jsonStr.match(/"CurrentTemperature"\s*:\s*([\d.-]+)/);
-            if (tempMatch) currentTemperature = parseFloat(tempMatch[1]);
-            const humMatch = jsonStr.match(/"CurrentHumidity"\s*:\s*([\d.-]+)/);
-            if (humMatch) currentHumidity = parseFloat(humMatch[1]);
-            const pressMatch = jsonStr.match(/"AtmPressure"\s*:\s*([\d.-]+)/);
-            if (pressMatch) currentPressure = parseFloat(pressMatch[1]);
-            const lightMatch = jsonStr.match(/"LightIntensity"\s*:\s*([\d.-]+)/);
-            if (lightMatch) currentLight = parseFloat(lightMatch[1]);
-
-            sensorStatus.I2C.BME680 = currentTemperature !== undefined || currentHumidity !== undefined || currentPressure !== undefined;
-            sensorStatus.I2C.VEML7700 = currentLight !== undefined;
-
-            if (currentTemperature !== undefined) sensorData.I2C["BME680 Temperature"] = `${parseFloat(currentTemperature).toFixed(2)} °C`;
-            if (currentHumidity !== undefined) sensorData.I2C["BME680 Humidity"] = `${parseFloat(currentHumidity).toFixed(2)} %`;
-            if (currentPressure !== undefined) sensorData.I2C["BME680 Pressure"] = `${parseFloat(currentPressure).toFixed(2)} hPa`;
-            if (currentLight !== undefined) sensorData.I2C["VEML7700 Light Intensity"] = `${parseFloat(currentLight).toFixed(2)} lux`;
-          }
-          updateSensorUI();
+    // === Handle calibration (I2C only) ===
+    if (protocol === "I2C") {
+      if (cleanLine.startsWith("TEMP_CALIBRATION:")) {
+        const val = parseFloat(cleanLine.split(":")[1]?.trim());
+        if (!isNaN(val)) {
+          document.getElementById("temp-offset").value = val;
+          log(`Temperature offset: ${val} °C`, "info");
+        }
+        return;
+      }
+      if (cleanLine.startsWith("HUM_CALIBRATION:")) {
+        const val = parseFloat(cleanLine.split(":")[1]?.trim());
+        if (!isNaN(val)) {
+          document.getElementById("hum-offset").value = val;
+          log(`Humidity offset: ${val} %`, "info");
+        }
+        return;
+      }
+      if (cleanLine.startsWith("PRESS_CALIBRATION:")) {
+        const val = parseFloat(cleanLine.split(":")[1]?.trim());
+        if (!isNaN(val)) {
+          document.getElementById("press-offset").value = val;
+          log(`Pressure offset: ${val} hPa`, "info");
         }
         return;
       }
     }
 
-    // Handle rain gauge data (e.g., "Rain Tip Detected! Hourly: 1 Daily: 2 Weekly: 3")
-    const rainMatch = line.match(/^Rain Tip Detected!\s*Hourly:\s*(\d+)\s*Daily:\s*(\d+)\s*Weekly:\s*(\d+)/);
+    // === 1. Direct sensor print format (most frequent & fastest) ===
+    // Example: "sensor: Temp=26.68C Hum=44.63% Press=98.82 hPa"
+    if (cleanLine.includes("Temp=") && cleanLine.includes("Hum=") && cleanLine.includes("Press=")) {
+      const tempMatch = cleanLine.match(/Temp=([\d.]+)C/);
+      const humMatch  = cleanLine.match(/Hum=([\d.]+)%/);
+      const pressMatch = cleanLine.match(/Press=([\d.]+) hPa/);
+
+      if (tempMatch) {
+        currentTemperature = parseFloat(tempMatch[1]);
+        sensorData.I2C["BME680 Temperature"] = `${currentTemperature.toFixed(2)} °C`;
+      }
+      if (humMatch) {
+        currentHumidity = parseFloat(humMatch[1]);
+        sensorData.I2C["BME680 Humidity"] = `${currentHumidity.toFixed(2)} %`;
+      }
+      if (pressMatch) {
+        currentPressure = parseFloat(pressMatch[1]);
+        sensorData.I2C["BME680 Pressure"] = `${currentPressure.toFixed(2)} hPa`;
+      }
+
+      // Mark BME680 as present if any value was extracted
+      if (tempMatch || humMatch || pressMatch) {
+        sensorStatus.I2C.BME680 = true;
+        updateSensorUI();
+      }
+      return;
+    }
+
+    // === 2. Line-by-line BME680 format ===
+    // Example: "sensor: BME680 - Temperature = 26.68 °C"
+    const bmeLineMatch = cleanLine.match(/BME680\s*-\s*(Temperature|Humidity|Pressure)\s*=\s*([\d.]+)\s*(°C|%|hPa)/i);
+    if (bmeLineMatch) {
+      const param = bmeLineMatch[1].trim();
+      const value = parseFloat(bmeLineMatch[2]);
+
+      if (!isNaN(value)) {
+        if (param.toLowerCase() === "temperature") {
+          currentTemperature = value;
+          sensorData.I2C["BME680 Temperature"] = `${value.toFixed(2)} °C`;
+        } else if (param.toLowerCase() === "humidity") {
+          currentHumidity = value;
+          sensorData.I2C["BME680 Humidity"] = `${value.toFixed(2)} %`;
+        } else if (param.toLowerCase() === "pressure") {
+          currentPressure = value;
+          sensorData.I2C["BME680 Pressure"] = `${value.toFixed(2)} hPa`;
+        }
+        sensorStatus.I2C.BME680 = true;
+        updateSensorUI();
+      }
+      return;
+    }
+
+    // === 3. Preparing to upload JSON (fallback / confirmation) ===
+    if (cleanLine.includes("Preparing to upload:")) {
+      const jsonStart = cleanLine.indexOf('{');
+      if (jsonStart === -1) return;
+
+      const jsonStr = cleanLine.substring(jsonStart);
+      try {
+        const json = JSON.parse(jsonStr);
+
+        let updated = false;
+
+        if (json.BME680_TEMP !== undefined && !isNaN(parseFloat(json.BME680_TEMP))) {
+          currentTemperature = parseFloat(json.BME680_TEMP);
+          sensorData.I2C["BME680 Temperature"] = `${currentTemperature.toFixed(2)} °C`;
+          updated = true;
+        }
+        if (json.BME680Humidity !== undefined && !isNaN(parseFloat(json.BME680Humidity))) {
+          currentHumidity = parseFloat(json.BME680Humidity);
+          sensorData.I2C["BME680 Humidity"] = `${currentHumidity.toFixed(2)} %`;
+          updated = true;
+        }
+        if (json.BME680_Pressure !== undefined && !isNaN(parseFloat(json.BME680_Pressure))) {
+          currentPressure = parseFloat(json.BME680_Pressure);
+          sensorData.I2C["BME680 Pressure"] = `${currentPressure.toFixed(2)} hPa`;
+          updated = true;
+        }
+        if (json.Lux !== undefined && !isNaN(parseFloat(json.Lux))) {
+          currentLight = parseFloat(json.Lux);
+          sensorData.I2C["VEML7700 Light Intensity"] = `${currentLight.toFixed(2)} lux`;
+          sensorStatus.I2C.VEML7700 = true;
+          updated = true;
+        }
+        if (json.Rain !== undefined && !isNaN(parseFloat(json.Rain))) {
+          const rainVal = parseFloat(json.Rain);
+          sensorData.ADC["Rainfall"] = `${rainVal.toFixed(2)} mm`;
+          sensorStatus.ADC["Rain Gauge"] = true;
+          updated = true;
+        }
+
+        if (updated) {
+          // Ensure BME680 is marked present if any BME value came through
+          if (json.BME680_TEMP || json.BME680Humidity || json.BME680_Pressure) {
+            sensorStatus.I2C.BME680 = true;
+          }
+          updateSensorUI();
+          log("Sensor UI updated from upload JSON", "success");
+        }
+      } catch (e) {
+        console.warn("JSON parse error:", e);
+      }
+      return;
+    }
+
+    // === Rain tip detection (keep if needed) ===
+    const rainMatch = cleanLine.match(/Rain Tip Detected!\s*Hourly:\s*(\d+)\s*Daily:\s*(\d+)\s*Weekly:\s*(\d+)/i);
     if (rainMatch && protocol === "ADC") {
       sensorStatus[protocol]["Rain Gauge"] = true;
       const hourlyTips = parseInt(rainMatch[1]);
       const dailyTips = parseInt(rainMatch[2]);
       const weeklyTips = parseInt(rainMatch[3]);
       sensorData[protocol]["Rainfall Hourly"] = `${(hourlyTips * 0.5).toFixed(2)} mm`;
-      sensorData[protocol]["Rainfall Daily"] = `${(dailyTips * 0.5).toFixed(2)} mm`; // Store as mm
+      sensorData[protocol]["Rainfall Daily"] = `${(dailyTips * 0.5).toFixed(2)} mm`;
       sensorData[protocol]["Rainfall Weekly"] = `${(weeklyTips * 0.5).toFixed(2)} mm`;
       updateSensorUI();
     }
-    // Handle simple key-value format (e.g., "Battery Voltage: 3.79 V")
-    const batteryMatch = line.match(/^Battery Voltage:\s*([\d.]+)\s*V$/);
+
+    // === Battery voltage (keep if needed) ===
+    const batteryMatch = cleanLine.match(/Battery Voltage:\s*([\d.]+)\s*V$/i);
     if (batteryMatch && protocol === "ADC") {
       const voltage = parseFloat(batteryMatch[1]);
       sensorStatus[protocol]["Battery Voltage"] = true;
