@@ -2,6 +2,9 @@
 
 let selectedCACertFile = null;
 let selectedClientKeyFile = null;
+// Add near other global variables
+let currentIntervalValue = '5';
+let currentIntervalUnit  = "minutes";
 
 // Certificate file paths for Weather Station MQTT
 let weatherCACert = null;
@@ -1002,16 +1005,225 @@ function updateProtocolUI() {
 //   if (portInput) portInput.value = ssl === "yes" ? "8883" : "1883";
 // }
 
-/* ------------------------------------------------------------------ */
-/*  GATEWAY FUNCTIONS                                                 */
-/* ------------------------------------------------------------------ */
+// ──────────────────────────────────────────────────────────────────────────────
+// Gateway - Update UI visibility
+// ──────────────────────────────────────────────────────────────────────────────
 function updateGatewayProtocolUI() {
   const protocol = document.getElementById("gateway-protocol-select")?.value;
-  if (!protocol) return;
-  document.getElementById("gateway-mqtt-section").style.display = protocol === "MQTT" ? "block" : "none";
-  document.getElementById("gateway-http-section").style.display = protocol === "HTTP" ? "block" : "none";
+
+  document.getElementById("gateway-mqtt-section").style.display = "none";
+  document.getElementById("gateway-basic-mqtt-section").style.display = "none";
+  document.getElementById("gateway-http-section").style.display = "none";
+
+  if (protocol === "MQTT") {
+    document.getElementById("gateway-mqtt-section").style.display = "block";
+  } else if (protocol === "BASIC_MQTT") {
+    document.getElementById("gateway-basic-mqtt-section").style.display = "block";
+  } else if (protocol === "HTTP") {
+    document.getElementById("gateway-http-section").style.display = "block";
+  }
 }
 
+// Restart Gateway Device (same logic as Weather Station)
+async function restartGatewayDevice() {
+  if (!isGatewayConnected) {
+    gatewayLog("No Gateway connected! Please connect first.", "error");
+    return;
+  }
+
+  const confirmed = confirm("Are you sure you want to restart the Gateway device?");
+  if (!confirmed) return;
+
+  try {
+    const res = await window.electronAPI.sendData('RESTART_DEVICE\r\n');
+    if (res?.error) {
+      gatewayLog(`Failed to send RESTART command: ${res.error}`, "error");
+    } else {
+      gatewayLog("Restart command sent to Gateway device successfully.", "success");
+    }
+
+    // Disable button temporarily (same as Weather Station)
+    const btn = document.getElementById('gateway-restart-button');
+    btn.disabled = true;
+    setTimeout(() => { btn.disabled = false; }, 5000);
+
+  } catch (err) {
+    gatewayLog(`Error sending restart: ${err.message}`, "error");
+  }
+}
+
+// Modern Gateway Interval setter (same logic as Weather Station)
+async function setGatewayIntervalNew() {
+  const valueInput = document.getElementById("gateway-interval-value");
+  const unitSelect = document.getElementById("gateway-interval-unit");
+
+  if (!valueInput || !unitSelect) {
+    gatewayLog("Interval inputs not found", "error");
+    return;
+  }
+
+  const rawValue = parseInt(valueInput.value.trim());
+  const unit = unitSelect.value;
+
+  if (isNaN(rawValue) || rawValue < 1) {
+    gatewayLog("Please enter a valid number (≥ 1)", "error");
+    valueInput.focus();
+    return;
+  }
+
+  let seconds;
+  switch (unit) {
+    case "seconds": seconds = rawValue; break;
+    case "minutes": seconds = rawValue * 60; break;
+    case "hours":   seconds = rawValue * 3600; break;
+    default: return gatewayLog("Invalid unit selected", "error");
+  }
+
+  if (seconds > 86400) { // max 24 hours
+    gatewayLog("Interval too large (maximum 24 hours)", "error");
+    return;
+  }
+
+  if (seconds < 10) {
+    gatewayLog("Warning: Very short interval (<10 seconds) may cause high power usage", "warning");
+  }
+
+  gatewayLog(`Setting Gateway interval to ${rawValue} ${unit} (${seconds} seconds)...`, "info");
+
+  try {
+    const command = `SET_INTERVAL:${seconds}`;
+    const res = await window.electronAPI.sendData(command + "\r\n");
+
+    if (res?.error) {
+      gatewayLog(`Failed: ${res.error}`, "error");
+      return;
+    }
+
+    gatewayLog(`Gateway interval successfully set to ${rawValue} ${unit}!`, "success");
+
+    // Visual feedback
+    valueInput.style.backgroundColor = '#e8f5e9';
+    setTimeout(() => { valueInput.style.backgroundColor = ''; }, 1200);
+
+  } catch (err) {
+    gatewayLog(`Communication error: ${err.message}`, "error");
+  }
+}
+// ──────────────────────────────────────────────────────────────────────────────
+// Gateway - AWS IoT MQTT (TLS)
+// ──────────────────────────────────────────────────────────────────────────────
+async function setGatewayAWSMQTTConfigAll() {
+  const topic = document.getElementById("gateway-mqtt-publish-topic")?.value.trim();
+  const endpoint = document.getElementById("gateway-aws-endpoint")?.value.trim();
+  const port = document.getElementById("gateway-mqtt-port")?.value.trim();
+
+  const commands = [];
+  if (topic) commands.push(`SET_PUBLISH_TOPIC:${topic}`);
+  if (endpoint) commands.push(`SET_AWS_ENDPOINT:${endpoint}`);
+  // Port is fixed for AWS → usually not sent
+
+  if (commands.length === 0) {
+    gatewayLog("No AWS IoT fields to apply", "info");
+    return;
+  }
+
+  for (const cmd of commands) {
+    const res = await window.electronAPI.sendData(cmd + "\r\n");
+    if (res?.error) {
+      gatewayLog(`Failed: ${cmd} → ${res.error}`, "error");
+      return;
+    }
+    gatewayLog(`Success: ${cmd}`, "success");
+    await delay(400);
+  }
+
+  gatewayLog("AWS IoT MQTT configuration updated!", "success");
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Gateway - AWS IoT (Extra Broker) Enable/Disable
+// Uses correct firmware commands: ENABLE_EXTRA_MQTT / DISABLE_EXTRA_MQTT
+// ──────────────────────────────────────────────────────────────────────────────
+async function enableGatewayAWSMQTT(enable = true) {
+  const cmd = enable ? "ENABLE_EXTRA_MQTT" : "DISABLE_EXTRA_MQTT";
+  
+  gatewayLog(`Sending: ${cmd}...`, "info");
+
+  try {
+    const res = await window.electronAPI.sendData(cmd + "\r\n");
+    
+    if (res?.error) {
+      gatewayLog(`Failed: ${res.error}`, "error");
+    } else {
+      gatewayLog(`AWS IoT (Extra Broker) ${enable ? "ENABLED" : "DISABLED"}`, 
+                 enable ? "success" : "warning");
+    }
+  } catch (err) {
+    gatewayLog(`Communication error: ${err.message}`, "error");
+  }
+}
+// ──────────────────────────────────────────────────────────────────────────────
+// Gateway - Basic MQTT
+// ──────────────────────────────────────────────────────────────────────────────
+async function setGatewayBasicMQTTConfig() {
+  const broker   = document.getElementById("gateway-basic-mqtt-broker")?.value.trim();
+  const port     = document.getElementById("gateway-basic-mqtt-port")?.value.trim();
+  const clientId = document.getElementById("gateway-basic-mqtt-client-id")?.value.trim();
+  const username = document.getElementById("gateway-basic-mqtt-username")?.value.trim();
+  const password = document.getElementById("gateway-basic-mqtt-password")?.value;
+  const topic    = document.getElementById("gateway-basic-mqtt-publish-topic")?.value.trim();
+  const ssl      = document.getElementById("gateway-basic-mqtt-ssl")?.value;
+
+  const commands = [];
+
+  if (broker)   commands.push(`SET_BASIC_BROKER:${broker}`);
+  if (port && !isNaN(parseInt(port))) commands.push(`SET_BASIC_PORT:${port}`);
+  if (clientId) commands.push(`SET_MQTT_CLIENT_ID:${clientId}`);
+  if (username) commands.push(`SET_MQTT_USERNAME:${username}`);
+  if (password) commands.push(`SET_MQTT_PASSWORD:${password}`);
+  if (topic)    commands.push(`SET_PUBLISH_TOPIC:${topic}`);
+  if (ssl)      commands.push(`SET_BASIC_MQTT_SSL:${ssl === "yes" ? "1" : "0"}`);
+
+  if (commands.length === 0) {
+    gatewayLog("No Basic MQTT fields filled", "info");
+    return;
+  }
+
+  for (const cmd of commands) {
+    const res = await window.electronAPI.sendData(cmd + "\r\n");
+    if (res?.error) {
+      gatewayLog(`Failed: ${cmd} → ${res.error}`, "error");
+      return;
+    }
+    gatewayLog(`Success: ${cmd}`, "success");
+    await delay(400);
+  }
+
+  gatewayLog("Basic MQTT configuration updated!", "success");
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Gateway - Basic MQTT Enable/Disable
+// Uses correct firmware command: ENABLE_BASIC_MQTT / DISABLE_BASIC_MQTT
+// ──────────────────────────────────────────────────────────────────────────────
+async function enableGatewayBasicMQTT(enable = true) {
+  const cmd = enable ? "ENABLE_BASIC_MQTT" : "DISABLE_BASIC_MQTT";
+  
+  gatewayLog(`Sending: ${cmd}...`, "info");
+
+  try {
+    const res = await window.electronAPI.sendData(cmd + "\r\n");
+    
+    if (res?.error) {
+      gatewayLog(`Failed: ${res.error}`, "error");
+    } else {
+      gatewayLog(`Basic MQTT ${enable ? "ENABLED" : "DISABLED"}`, 
+                 enable ? "success" : "warning");
+    }
+  } catch (err) {
+    gatewayLog(`Communication error: ${err.message}`, "error");
+  }
+}
 // function toggleGatewayCertUploadAndPort() {
 //   const ssl = document.getElementById("gateway-mqtt-ssl")?.value;
 //   if (!ssl) return;
@@ -1727,11 +1939,11 @@ document.querySelectorAll('.collapsible').forEach(button => {
   });
 });
 
-function updateGatewayProtocolUI() {
-  const protocol = document.getElementById('gateway-protocol-select').value;
-  document.getElementById('gateway-mqtt-section').style.display = protocol === 'MQTT' ? 'block' : 'none';
-  document.getElementById('gateway-http-section').style.display = protocol === 'HTTP' ? 'block' : 'none';
-}
+// function updateGatewayProtocolUI() {
+//   const protocol = document.getElementById('gateway-protocol-select').value;
+//   document.getElementById('gateway-mqtt-section').style.display = protocol === 'MQTT' ? 'block' : 'none';
+//   document.getElementById('gateway-http-section').style.display = protocol === 'HTTP' ? 'block' : 'none';
+// }
 
 async function setGatewayPublishTopic() {
   console.log("*** setGatewayPublishTopic ACTIVE! ***");
@@ -1928,7 +2140,93 @@ function toggleSensorPayloadInput() {
 }
 
 
+// Apply Gateway Publish Payload Size (PUBLISH_PAYLOAD_SIZE)
+async function applyGatewayPublishPayload() {
+  const input = document.getElementById("gateway-publish-payload");
+  if (!input) {
+    gatewayLog("Publish Payload input field not found!", "error");
+    return;
+  }
 
+  const value = parseInt(input.value.trim(), 10);
+
+  if (isNaN(value) || value < 2 || value % 2 !== 0) {
+    gatewayLog("Publish Payload must be an even number ≥ 2", "error");
+    input.focus();
+    return;
+  }
+
+  const command = `PUBLISH_PAYLOAD_SIZE:${value}`;
+
+  gatewayLog(`Sending: ${command}`, "info");
+
+  try {
+    await new Promise(r => setTimeout(r, 300));
+
+    const res = await window.electronAPI.sendData(command + "\r\n");
+
+    if (res?.error) {
+      gatewayLog(`Failed to set Publish Payload Size: ${res.error}`, "error");
+    } else {
+      gatewayLog(`Gateway Publish Payload Size successfully set to ${value} bytes!`, "success");
+      
+      // Visual feedback
+      input.style.backgroundColor = '#e8f5e9';
+      setTimeout(() => { input.style.backgroundColor = ''; }, 1200);
+    }
+
+    // Optional: auto-refresh config
+    await new Promise(r => setTimeout(r, 1000));
+    // await window.electronAPI.sendData("GET\r\n");
+
+  } catch (err) {
+    gatewayLog(`Error: ${err.message}`, "error");
+  }
+}
+
+// Apply BLE Receive Payload Size (BLE_RECEIVE_PAYLOAD_SIZE)
+async function applyBleReceivePayload() {
+  const input = document.getElementById("gateway-ble-receive-payload");
+  if (!input) {
+    gatewayLog("BLE Receive Payload input field not found!", "error");
+    return;
+  }
+
+  const value = parseInt(input.value.trim(), 10);
+
+  if (isNaN(value) || value < 2 || value % 2 !== 0) {
+    gatewayLog("BLE Receive Payload must be an even number ≥ 2", "error");
+    input.focus();
+    return;
+  }
+
+  const command = `BLE_RECEIVE_PAYLOAD_SIZE:${value}`;
+
+  gatewayLog(`Sending: ${command}`, "info");
+
+  try {
+    await new Promise(r => setTimeout(r, 300));
+
+    const res = await window.electronAPI.sendData(command + "\r\n");
+
+    if (res?.error) {
+      gatewayLog(`Failed to set BLE Receive Payload Size: ${res.error}`, "error");
+    } else {
+      gatewayLog(`BLE Receive Payload Size successfully set to ${value} bytes!`, "success");
+      
+      // Visual feedback
+      input.style.backgroundColor = '#e8f5e9';
+      setTimeout(() => { input.style.backgroundColor = ''; }, 1200);
+    }
+
+    // Optional: auto-refresh config
+    await new Promise(r => setTimeout(r, 1000));
+    // await window.electronAPI.sendData("GET\r\n");
+
+  } catch (err) {
+    gatewayLog(`Error: ${err.message}`, "error");
+  }
+}
 // Apply Gateway Total Payload
 function applyGatewayPayload() {
   const bytes = parseInt(document.getElementById("gateway-total-payload").value);
@@ -1963,32 +2261,103 @@ function clearOutput() {
   document.getElementById('output').innerHTML = '';
 }
 
+
+
+// Format nice display string
 function updateIntervalDisplay() {
-  const input = document.getElementById('interval');
-  if (input) input.value = input.value.replace(/[^0-9]/g, '');
+  const valueEl = document.getElementById("current-interval-display");
+  if (!valueEl) return;
+
+  const v = currentIntervalValue;
+  const u = currentIntervalUnit;
+
+  let text = v === 1 
+    ? `1 ${u.slice(0,-1)}` 
+    : `${v} ${u}`;
+
+  valueEl.textContent = text;
 }
 
-async function setInterval() {  // Weather
-  const v = parseInt(document.getElementById("interval").value);
-  if (isNaN(v) || v <= 0) return log("Invalid interval", "error");
-  const res = await window.electronAPI.sendData(`SET_INTERVAL:${v}`);
-  log(res.error ? res.error : "Interval set", res.error ? "error" : "success");
+async function setIntervalNew() {
+  const valueInput = document.getElementById("interval-value");
+  const unitSelect  = document.getElementById("interval-unit");
+
+  if (!valueInput || !unitSelect) return;
+
+  const rawValue = parseInt(valueInput.value.trim());
+  const unit     = unitSelect.value;
+
+  if (isNaN(rawValue) || rawValue < 1) {
+    log("Please enter a valid number (≥ 1)", "error");
+    valueInput.focus();
+    return;
+  }
+
+  let seconds;
+  switch (unit) {
+    case "seconds": seconds = rawValue; break;
+    case "minutes": seconds = rawValue * 60; break;
+    case "hours":   seconds = rawValue * 3600; break;
+    default: return log("Invalid unit selected", "error");
+  }
+
+  if (seconds > 86400) { // max 24 hours
+    log("Interval too large (max 24 hours)", "error");
+    return;
+  }
+
+  if (seconds < 10) {
+    log("Warning: Very short interval (<10 seconds)", "warning");
+  }
+
+  log(`Setting interval to ${rawValue} ${unit} (${seconds} seconds)...`, "info");
+
+  try {
+    const command = `SET_INTERVAL:${seconds}`;
+    const res = await window.electronAPI.sendData(command + "\r\n");
+
+    if (res?.error) {
+      log(`Failed: ${res.error}`, "error");
+      return;
+    }
+
+    // Success
+    log(`Interval successfully set to ${rawValue} ${unit}!`, "success");
+
+    // Optional: give visual feedback on input
+    valueInput.style.backgroundColor = '#e8f5e9';
+    setTimeout(() => {
+      valueInput.style.backgroundColor = '';
+    }, 1200);
+
+  } catch (err) {
+    log(`Communication error: ${err.message}`, "error");
+  }
 }
+// Optional: when you receive current config from device (GET response)
+function parseCurrentIntervalFromGET(secondsFromDevice) {
+  if (!secondsFromDevice || isNaN(secondsFromDevice)) return;
 
-function log(message, type = "default") {
-  const output = document.getElementById('output');
-  if (!output) return;
+  let value, unit;
 
-  const escaped = message
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+  if (secondsFromDevice >= 3600 && secondsFromDevice % 3600 === 0) {
+    value = secondsFromDevice / 3600;
+    unit  = "hours";
+  } else if (secondsFromDevice >= 60 && secondsFromDevice % 60 === 0) {
+    value = secondsFromDevice / 60;
+    unit  = "minutes";
+  } else {
+    value = secondsFromDevice;
+    unit  = "seconds";
+  }
 
-  // Just raw message – no time, no prefix, no class
-  output.innerHTML += `<span class="log-raw">${escaped}</span><br>`;
-  output.scrollTop = output.scrollHeight;
+  currentIntervalValue = value;
+  currentIntervalUnit  = unit;
 
-  console.log(`[WEATHER] ${message}`);
+  // Update UI
+  document.getElementById("interval-value").value = value;
+  document.getElementById("interval-unit").value   = unit;
+  updateIntervalDisplay();
 }
 
 
@@ -2361,6 +2730,7 @@ async function resetCalibration() {
 /* ------------------------------------------------------------------ */
 window.addEventListener("DOMContentLoaded", () => {
   updateProtocolUI();
+  updateGatewayProtocolUI();
   listPorts();
   listPortsGateway();
   updateSensorUI();

@@ -359,9 +359,9 @@ ipcMain.handle("connect-port", async (event, portName, baudRate = 115200) => {
     // Wait longer for port stabilization
     await new Promise((resolve) => setTimeout(resolve, 2000));
 
-    // Send a simple command to verify connection
-    console.log("Sending initial GET command...");
-    await sendCommand("GET", port);
+    // // Send a simple command to verify connection
+    // console.log("Sending initial GET command...");
+    // await sendCommand("GET", port);
 
     return `Connected to ${portName} at ${baudRate} baud`;
   } catch (error) {
