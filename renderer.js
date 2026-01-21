@@ -886,6 +886,39 @@ function parseSensorData(data) {
       return;
     }
 
+    // === NEW: Light intensity parsing (multiple common formats) ===
+    // Matches lines like:
+    //   sensor: Light intensity: 438 lux
+    //   Lux: 1250
+    //   VEML7700 Lux = 320.5
+    //   light intensity = 950 lux
+    if (protocol === "I2C") {
+      const lightPatterns = [
+        /Light intensity:\s*([\d.]+)\s*lux/i,
+        /Lux\s*[:=]\s*([\d.]+)/i,
+        /VEML7700.*Lux\s*[:=]\s*([\d.]+)/i,
+        /light\s*(intensity)?\s*[:=]\s*([\d.]+)\s*lux?/i,
+        /lux\s*[:=]\s*([\d.]+)/i
+      ];
+
+      for (const regex of lightPatterns) {
+        const match = cleanLine.match(regex);
+        if (match && match[1]) {
+          const lux = parseFloat(match[1]);
+          if (!isNaN(lux)) {
+            currentLight = lux;
+            sensorData.I2C["VEML7700 Light Intensity"] = `${lux.toFixed(2)} lux`;
+            sensorStatus.I2C.VEML7700 = true;
+            updateSensorUI();
+
+            // Optional: debug log (you can remove later)
+            console.log(`[LIGHT] Parsed: ${lux.toFixed(2)} lux from: "${cleanLine}"`);
+            return; // Stop after successful light parse
+          }
+        }
+      }
+    }
+
     // === 3. Preparing to upload JSON (fallback / confirmation) ===
     if (cleanLine.includes("Preparing to upload:")) {
       const jsonStart = cleanLine.indexOf('{');
@@ -962,7 +995,6 @@ function parseSensorData(data) {
     }
   });
 }
-
 /* ------------------------------------------------------------------ */
 /*  WEATHER STATION PROTOCOL UI                                       */
 /* ------------------------------------------------------------------ */
