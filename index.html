@@ -633,6 +633,40 @@
                     </svg>
                   </div>
                 </div>
+<!-- Wind Direction (Compass) -->
+                <div id="wind-direction-card" class="card-container" style="display: none;">
+                  <h4>Wind Direction</h4>
+                  <div id="wind-direction-value" class="sensor-value"></div>
+                  <svg id="compass" width="120" height="120" viewBox="0 0 120 120">
+                    <circle cx="60" cy="60" r="55" fill="none" stroke="#333" stroke-width="2" />
+                    <text x="60" y="20" text-anchor="middle" font-size="12">N</text>
+                    <text x="60" y="110" text-anchor="middle" font-size="12">S</text>
+                    <text x="110" y="65" text-anchor="middle" font-size="12">E</text>
+                    <text x="10" y="65" text-anchor="middle" font-size="12">W</text>
+                    <path id="compass-arrow" d="M60 20 L70 60 L60 100 L50 60 Z" fill="#3498db" transform="rotate(0 60 60)" />
+                  </svg>
+                </div>
+
+                <!-- Wind Speed (Anemometer Animation) -->
+                <div id="wind-speed-card" class="card-container" style="display: none;">
+                  <h4>Wind Speed</h4>
+                  <div id="wind-speed-value" class="sensor-value"></div>
+                  <svg id="anemometer" width="120" height="120" viewBox="0 0 120 120">
+                    <defs>
+                      <radialGradient id="anemometerGradient" cx="50%" cy="50%" r="50%">
+                        <stop offset="0%" stop-color="#3498db" />
+                        <stop offset="100%" stop-color="#2980b9" />
+                      </radialGradient>
+                    </defs>
+                    <rect x="55" y="30" width="10" height="60" fill="#bdc3c7" />
+                    <g id="cups" transform="translate(60, 60)">
+                      <circle cx="0" cy="-30" r="15" fill="url(#anemometerGradient)" />
+                      <circle cx="26" cy="15" r="15" fill="url(#anemometerGradient)" />
+                      <circle cx="-26" cy="15" r="15" fill="url(#anemometerGradient)" />
+                    </g>
+                  </svg>
+                </div>
+
               </div>
 
               <!-- Calibration Section (Collapsible) -->

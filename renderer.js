@@ -39,6 +39,8 @@ let currentTemperature = null;
 let currentHumidity = null;
 let currentPressure = null;
 let currentLight = null;
+let currentWindSpeed = null;
+let currentWindDirection = null;
 let isConnected = false;
 let currentBaud = 115200;
 let currentPort = "";
@@ -218,6 +220,11 @@ function updateSensorUI() {
   const rainGaugeDailyValue = document.getElementById("rain-gauge-daily-value");
   const rainGaugeWeeklyValue = document.getElementById("rain-gauge-weekly-value");
 
+  const windDirectionValue = document.getElementById("wind-direction-value");
+  const compassArrow = document.getElementById("compass-arrow");
+  const windSpeedValue = document.getElementById("wind-speed-value");
+  const anemometerCups = document.getElementById("cups");
+
   sensorListDiv.innerHTML = "";
   if (sensorDataDiv) sensorDataDiv.innerHTML = "";
 
@@ -255,7 +262,7 @@ function updateSensorUI() {
   for (const [k, v] of Object.entries(data)) {
     if (v !== null && v !== undefined && v !== "null" && v !== "") {
       // Include all valid sensor data for I2C, and specific data for ADC
-      if (protocol === "I2C" || k.includes("Battery Voltage") || k.includes("Rainfall")) {
+     if (protocol === "I2C" || protocol === "RS232" || k.includes("Battery Voltage") || k.includes("Rainfall"))  {
         dataHtml += `<div class="sensor-data-item"><strong>${k}:</strong> ${v}</div>`;
         hasData = true;
       }
@@ -782,6 +789,78 @@ function updateSensorUI() {
       lightCard.querySelector("rect").style.filter = "brightness(1)";
       sparkles.style.opacity = 0;
     }
+ } else if (protocol === "RS232") {
+    // Get the card elements
+    const windDirectionCard = document.getElementById("wind-direction-card");
+    const windSpeedCard = document.getElementById("wind-speed-card");
+    
+    /* Wind Direction */
+    if (currentWindDirection !== null && !isNaN(parseFloat(currentWindDirection))) {
+      windDirectionCard.style.display = "block";
+      const direction = parseFloat(currentWindDirection);
+      windDirectionValue.textContent = `${direction.toFixed(0)}°`;
+
+      // Rotate arrow
+      compassArrow.style.transition = "transform 0.8s ease";
+      compassArrow.setAttribute("transform", `rotate(${direction} 60 60)`);
+
+      // Simple animation pulse
+      windDirectionCard.classList.remove("shake");
+      void windDirectionCard.offsetWidth;
+      windDirectionCard.classList.add("shake");
+    } else {
+      windDirectionCard.style.display = "none";
+    }
+
+    /* Wind Speed */
+    if (currentWindSpeed !== null && !isNaN(parseFloat(currentWindSpeed))) {
+      windSpeedCard.style.display = "block";
+      const speed = parseFloat(currentWindSpeed);
+      windSpeedValue.textContent = `${speed.toFixed(2)} m/s`;
+
+      // Animate rotation speed based on wind speed
+      const maxSpeed = 50; // Assume max wind speed for full animation
+      const t = Math.min(Math.max(speed / maxSpeed, 0), 1);
+      const duration = 2 / (1 + t * 9); // From 2s (slow) to 0.2s (fast)
+
+      // Define rotation animation
+      const rotationAnimation = `
+        @keyframes rotateCups {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `;
+
+      let styleSheet = document.styleSheets[0];
+      let existingRuleIndex = -1;
+      for (let i = 0; i < styleSheet.cssRules.length; i++) {
+        if (styleSheet.cssRules[i].name === "rotateCups") {
+          existingRuleIndex = i;
+          break;
+        }
+      }
+      if (existingRuleIndex !== -1) {
+        styleSheet.deleteRule(existingRuleIndex);
+      }
+      styleSheet.insertRule(rotationAnimation, styleSheet.cssRules.length);
+
+      anemometerCups.style.animation = `rotateCups ${duration}s linear infinite`;
+      anemometerCups.style.animationPlayState = "running";
+      anemometerCups.getBoundingClientRect(); // Force reflow
+
+      // Color based on speed
+      const lowColor = { r: 52, g: 152, b: 219 }; // Blue
+      const highColor = { r: 231, g: 76, b: 60 }; // Red
+      const r = Math.round(lowColor.r + (highColor.r - lowColor.r) * t);
+      const g = Math.round(lowColor.g + (highColor.g - lowColor.g) * t);
+      const b = Math.round(lowColor.b + (highColor.b - lowColor.b) * t);
+      const anemometerColor = `rgb(${r}, ${g}, ${b})`;
+
+      document.getElementById("anemometerGradient").children[0].setAttribute("stop-color", anemometerColor);
+      document.getElementById("anemometerGradient").children[1].setAttribute("stop-color", anemometerColor);
+    } else {
+      windSpeedCard.style.display = "none";
+    }
   }
 }
 /* ------------------------------------------------------------------ */
@@ -918,7 +997,65 @@ function parseSensorData(data) {
         }
       }
     }
+// === Wind Speed and Direction parsing for RS232 ===
+    if (protocol === "RS232") {
+        // Match patterns like: "sensor: Wind: 0.59 m/s, Direction: 226°"
+        // The cleanLine might still have "sensor:" prefix, so we'll handle both cases
+        const windPattern = /Wind:\s*([\d.]+)\s*m\/s\s*,\s*Direction:\s*([\d.]+)\s*°?/i;
 
+        const match = cleanLine.match(windPattern);
+
+        if (match) {
+            const speed     = parseFloat(match[1]);
+            const direction = parseFloat(match[2]);
+
+            if (!isNaN(speed)) {
+                currentWindSpeed = speed;
+                sensorData.RS232["Wind Speed"] = `${speed.toFixed(2)} m/s`;
+                sensorStatus.RS232["Ultrasonic Sensor"] = true;
+                updateSensorUI();
+                console.log(`[WIND] Parsed speed: ${speed.toFixed(2)} m/s from: "${cleanLine}"`);
+            }
+
+            if (!isNaN(direction)) {
+                currentWindDirection = direction;
+                sensorData.RS232["Wind Direction"] = `${Math.round(direction)}°`;
+                sensorStatus.RS232["Ultrasonic Sensor"] = true;
+                updateSensorUI();
+                console.log(`[WIND] Parsed direction: ${Math.round(direction)}° from: "${cleanLine}"`);
+            }
+
+            // Early return — no need to check other patterns if this one matched
+            return;
+        }
+
+        // Fallback: try separate lines
+        const speedOnly = cleanLine.match(/Wind:\s*([\d.]+)\s*m\/s/i);
+        if (speedOnly) {
+            const speed = parseFloat(speedOnly[1]);
+            if (!isNaN(speed)) {
+                currentWindSpeed = speed;
+                sensorData.RS232["Wind Speed"] = `${speed.toFixed(2)} m/s`;
+                sensorStatus.RS232["Ultrasonic Sensor"] = true;
+                updateSensorUI();
+                console.log(`[WIND SPEED only] ${speed.toFixed(2)} m/s from: "${cleanLine}"`);
+            }
+            return;
+        }
+
+        const dirOnly = cleanLine.match(/Direction:\s*([\d.]+)\s*°?/i);
+        if (dirOnly) {
+            const direction = parseFloat(dirOnly[1]);
+            if (!isNaN(direction)) {
+                currentWindDirection = direction;
+                sensorData.RS232["Wind Direction"] = `${Math.round(direction)}°`;
+                sensorStatus.RS232["Ultrasonic Sensor"] = true;
+                updateSensorUI();
+                console.log(`[WIND DIR only] ${Math.round(direction)}° from: "${cleanLine}"`);
+            }
+            return;
+        }
+    }
     // === 3. Preparing to upload JSON (fallback / confirmation) ===
     if (cleanLine.includes("Preparing to upload:")) {
       const jsonStart = cleanLine.indexOf('{');
@@ -2838,6 +2975,8 @@ function clearSensorData() {
   currentHumidity = null;
   currentPressure = null;
   currentLight = null;
+  currentWindSpeed = null;
+  currentWindDirection = null;
   updateSensorUI();
 }
 
